@@ -45,8 +45,10 @@ import {
   Users,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useData } from "@/hooks/use-data"
 import { jsPDF } from "jspdf"
 import html2canvas from "html2canvas"
+import { supabase } from "@/lib/supabase"
 
 interface Item {
   id: string
@@ -122,6 +124,16 @@ export default function OrcamentoPage() {
   const [filtroHistorico, setFiltroHistorico] = useState<string>("")
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
   const { toast } = useToast()
+  const { 
+    fetchProducts, saveProduct, deleteProduct,
+    fetchClients, saveClient, deleteClient,
+    fetchBudgets, saveBudget, deleteBudget,
+    fetchContracts, saveContract, deleteContract,
+    fetchTransactions, saveTransaction, deleteTransaction,
+    fetchAccounts, saveAccount, deleteAccount,
+    fetchSettings, saveSettings,
+    uploadImage 
+  } = useData()
 
   const [configuracoes, setConfiguracoes] = useState({
     nomeEmpresa: "Informática - Soluções em Tecnologia",
@@ -244,42 +256,51 @@ export default function OrcamentoPage() {
   ]
 
   useEffect(() => {
-    // Carregar itens salvos do localStorage
-    const savedItems = localStorage.getItem("itensSalvos")
-    if (savedItems) {
-      setItensSalvos(JSON.parse(savedItems))
+    // Carregar dados do servidor (Supabase)
+    const loadData = async () => {
+      try {
+        const [
+          products,
+          clients,
+          budgets,
+          contracts,
+          settings,
+          accounts,
+          transactions
+        ] = await Promise.all([
+          fetchProducts().catch(e => { console.error('Error fetching products:', e); return [] }),
+          fetchClients().catch(e => { console.error('Error fetching clients:', e); return [] }),
+          fetchBudgets().catch(e => { console.error('Error fetching budgets:', e); return [] }),
+          fetchContracts().catch(e => { console.error('Error fetching contracts:', e); return [] }),
+          fetchSettings().catch(e => { console.error('Error fetching settings:', e); return null }),
+          fetchAccounts().catch(e => { console.error('Error fetching accounts:', e); return [] }),
+          fetchTransactions().catch(e => { console.error('Error fetching transactions:', e); return [] })
+        ])
+
+        if (products && products.length > 0) setItensSalvos(products)
+        if (clients && clients.length > 0) setClientes(clients)
+        if (budgets && budgets.length > 0) setHistorico(budgets)
+        if (contracts && contracts.length > 0) setHistoricoContratos(contracts)
+        if (settings) setConfiguracoes(settings)
+        if (accounts && accounts.length > 0) setContas(accounts)
+        if (transactions && transactions.length > 0) setMovimentacoes(transactions)
+
+        // Adicionar um item vazio se não houver nenhum
+        if (itens.length === 0) {
+          adicionarItem()
+        }
+
+      } catch (error) {
+        console.error("Erro geral ao carregar dados:", error)
+        toast({
+          title: "Erro de conexão",
+          description: "Não foi possível carregar os dados do banco de dados.",
+          variant: "destructive"
+        })
+      }
     }
 
-    // Adicionar um item vazio se não houver nenhum
-    if (itens.length === 0) {
-      adicionarItem()
-    }
-
-    // Carregar histórico de orçamentos
-    const historicoSalvo = localStorage.getItem("historicoOrcamentos")
-    if (historicoSalvo) {
-      setHistorico(JSON.parse(historicoSalvo))
-    }
-
-    // Carregar histórico de contratos
-    const historicoContratosSalvo = localStorage.getItem("historicoContratos")
-    if (historicoContratosSalvo) {
-      setHistoricoContratos(JSON.parse(historicoContratosSalvo))
-    }
-
-    // Carregar clientes salvos
-    const clientesSalvos = localStorage.getItem("clientes")
-    if (clientesSalvos) {
-      setClientes(JSON.parse(clientesSalvos))
-    }
-  }, [])
-
-  useEffect(() => {
-    // Carregar configurações do localStorage
-    const configSalvas = localStorage.getItem("configuracoes")
-    if (configSalvas) {
-      setConfiguracoes(JSON.parse(configSalvas))
-    }
+    loadData()
   }, [])
 
   // Inicializar canvas
@@ -317,7 +338,7 @@ export default function OrcamentoPage() {
   }
 
   // Substituir a função adicionarMovimentacao
-  const adicionarMovimentacao = () => {
+  const adicionarMovimentacao = async () => {
     if (!novaMovimentacao.titulo || !novaMovimentacao.data || novaMovimentacao.valor <= 0) {
       toast({
         title: "Dados incompletos",
@@ -334,30 +355,40 @@ export default function OrcamentoPage() {
       dataHora: new Date().toLocaleString("pt-BR"),
     }
 
-    const novasMovimentacoes = [movimentacao, ...movimentacoes]
-    setMovimentacoes(novasMovimentacoes)
-    localStorage.setItem("movimentacoesCarteira", JSON.stringify(novasMovimentacoes))
+    try {
+      await saveTransaction(movimentacao)
+      
+      const novasMovimentacoes = [movimentacao, ...movimentacoes]
+      setMovimentacoes(novasMovimentacoes)
+      
+      // Limpar formulário
+      setNovaMovimentacao({
+        tipo: "entrada",
+        titulo: "",
+        observacao: "",
+        data: "",
+        valor: 0,
+        formaPagamento: "",
+        motivo: "",
+        moeda: "BRL",
+      })
 
-    // Limpar formulário
-    setNovaMovimentacao({
-      tipo: "entrada",
-      titulo: "",
-      observacao: "",
-      data: "",
-      valor: 0,
-      formaPagamento: "",
-      motivo: "",
-      moeda: "BRL",
-    })
-
-    toast({
-      title: "Movimentação adicionada",
-      description: `${movimentacao.tipo === "entrada" ? "Entrada" : "Saída"} registrada na conta ${contaSelecionada}!`,
-    })
+      toast({
+        title: "Movimentação adicionada",
+        description: `${movimentacao.tipo === "entrada" ? "Entrada" : "Saída"} registrada na conta ${contaSelecionada}!`,
+      })
+    } catch (error) {
+      console.error("Erro ao salvar movimentação:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar a movimentação.",
+        variant: "destructive"
+      })
+    }
   }
 
   // Adicionar função para criar nova conta
-  const adicionarConta = () => {
+  const adicionarConta = async () => {
     if (!novaConta.trim()) {
       toast({
         title: "Nome inválido",
@@ -376,19 +407,29 @@ export default function OrcamentoPage() {
       return
     }
 
-    const novasContas = [...contas, novaConta.trim()]
-    setContas(novasContas)
-    localStorage.setItem("contasCarteira", JSON.stringify(novasContas))
-    setNovaConta("")
+    try {
+      await saveAccount(novaConta.trim())
+      
+      const novasContas = [...contas, novaConta.trim()]
+      setContas(novasContas)
+      setNovaConta("")
 
-    toast({
-      title: "Conta criada",
-      description: `Conta "${novaConta.trim()}" criada com sucesso!`,
-    })
+      toast({
+        title: "Conta criada",
+        description: `Conta "${novaConta.trim()}" criada com sucesso!`,
+      })
+    } catch (error) {
+      console.error("Erro ao criar conta:", error)
+      toast({
+        title: "Erro ao criar",
+        description: "Não foi possível criar a conta.",
+        variant: "destructive"
+      })
+    }
   }
 
   // Adicionar função para remover conta
-  const removerConta = (nomeConta: string) => {
+  const removerConta = async (nomeConta: string) => {
     if (nomeConta === "Principal") {
       toast({
         title: "Não é possível remover",
@@ -407,29 +448,38 @@ export default function OrcamentoPage() {
       return
     }
 
-    // Remover movimentações da conta
-    const movimentacoesFiltradas = movimentacoes.filter((mov) => mov.conta !== nomeConta)
-    setMovimentacoes(movimentacoesFiltradas)
-    localStorage.setItem("movimentacoesCarteira", JSON.stringify(movimentacoesFiltradas))
+    try {
+      await deleteAccount(nomeConta)
+      
+      // Remover movimentações da conta (atualizar estado local)
+      const movimentacoesFiltradas = movimentacoes.filter((mov) => mov.conta !== nomeConta)
+      setMovimentacoes(movimentacoesFiltradas)
+      
+      // Remover conta (atualizar estado local)
+      const novasContas = contas.filter((conta) => conta !== nomeConta)
+      setContas(novasContas)
+      
+      // Se a conta removida era a selecionada, selecionar a primeira
+      if (contaSelecionada === nomeConta) {
+        setContaSelecionada(novasContas[0])
+      }
 
-    // Remover conta
-    const novasContas = contas.filter((conta) => conta !== nomeConta)
-    setContas(novasContas)
-    localStorage.setItem("contasCarteira", JSON.stringify(novasContas))
-
-    // Se a conta removida era a selecionada, selecionar a primeira
-    if (contaSelecionada === nomeConta) {
-      setContaSelecionada(novasContas[0])
+      toast({
+        title: "Conta removida",
+        description: `Conta "${nomeConta}" e suas movimentações foram removidas!`,
+      })
+    } catch (error) {
+      console.error("Erro ao remover conta:", error)
+      toast({
+        title: "Erro ao remover",
+        description: "Não foi possível remover a conta. Verifique se existem movimentações.",
+        variant: "destructive"
+      })
     }
-
-    toast({
-      title: "Conta removida",
-      description: `Conta "${nomeConta}" e suas movimentações foram removidas!`,
-    })
   }
 
   // Funções de Clientes
-  const adicionarCliente = () => {
+  const adicionarCliente = async () => {
     if (!novoCliente.nome) {
       toast({
         title: "Nome obrigatório",
@@ -439,44 +489,62 @@ export default function OrcamentoPage() {
       return
     }
 
-    let novosClientes
-    if (novoCliente.id) {
-      // Editar
-      novosClientes = clientes.map((c) => (c.id === novoCliente.id ? novoCliente : c))
-      toast({
-        title: "Cliente atualizado",
-        description: "Dados do cliente atualizados com sucesso.",
+    try {
+      const savedClient = await saveClient(novoCliente)
+      
+      let novosClientes
+      if (novoCliente.id) {
+        // Editar
+        novosClientes = clientes.map((c) => (c.id === savedClient.id ? savedClient : c))
+        toast({
+          title: "Cliente atualizado",
+          description: "Dados do cliente atualizados com sucesso.",
+        })
+      } else {
+        // Novo
+        novosClientes = [savedClient, ...clientes]
+        toast({
+          title: "Cliente cadastrado",
+          description: "Cliente cadastrado com sucesso.",
+        })
+      }
+
+      setClientes(novosClientes)
+      setNovoCliente({
+        id: "",
+        nome: "",
+        cpfCnpj: "",
+        endereco: "",
+        telefone: "",
+        email: "",
       })
-    } else {
-      // Novo
-      const cliente = { ...novoCliente, id: crypto.randomUUID() }
-      novosClientes = [cliente, ...clientes]
+    } catch (error) {
+      console.error("Erro ao salvar cliente:", error)
       toast({
-        title: "Cliente cadastrado",
-        description: "Cliente cadastrado com sucesso.",
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar o cliente.",
+        variant: "destructive"
       })
     }
-
-    setClientes(novosClientes)
-    localStorage.setItem("clientes", JSON.stringify(novosClientes))
-    setNovoCliente({
-      id: "",
-      nome: "",
-      cpfCnpj: "",
-      endereco: "",
-      telefone: "",
-      email: "",
-    })
   }
 
-  const removerCliente = (id: string) => {
-    const novosClientes = clientes.filter((c) => c.id !== id)
-    setClientes(novosClientes)
-    localStorage.setItem("clientes", JSON.stringify(novosClientes))
-    toast({
-      title: "Cliente removido",
-      description: "Cliente removido com sucesso.",
-    })
+  const removerCliente = async (id: string) => {
+    try {
+      await deleteClient(id)
+      const novosClientes = clientes.filter((c) => c.id !== id)
+      setClientes(novosClientes)
+      toast({
+        title: "Cliente removido",
+        description: "Cliente removido com sucesso.",
+      })
+    } catch (error) {
+      console.error("Erro ao remover cliente:", error)
+      toast({
+        title: "Erro ao remover",
+        description: "Não foi possível remover o cliente.",
+        variant: "destructive"
+      })
+    }
   }
 
   const carregarClienteParaEdicao = (cliente: ClienteCadastro) => {
@@ -792,7 +860,7 @@ export default function OrcamentoPage() {
     setItens(itens.map((item) => (item.id === id ? { ...item, [campo]: valor } : item)))
   }
 
-  const salvarItem = (item: Item) => {
+  const salvarItem = async (item: Item) => {
     if (!item.descricao || item.valor <= 0) {
       toast({
         title: "Erro ao salvar item",
@@ -802,33 +870,54 @@ export default function OrcamentoPage() {
       return
     }
 
-    // Verificar se já existe um item com a mesma descrição
-    const itemExistente = itensSalvos.findIndex((i) => i.descricao === item.descricao)
-    const novoItensSalvos = [...itensSalvos]
+    try {
+        // Check if item exists in saved items to update it instead of creating duplicate
+        const itemExistente = itensSalvos.find(i => i.descricao === item.descricao)
+        
+        let itemToSave = { ...item }
+        if (itemExistente) {
+            itemToSave.id = itemExistente.id
+        } 
+        
+        // If the item id is a random UUID from frontend (which likely doesn't exist in DB yet unless it's an update),
+        // we can let upsert handle it. 
+        
+        const savedProduct = await saveProduct(itemToSave)
+        
+        let novoItensSalvos = [...itensSalvos]
+        const index = novoItensSalvos.findIndex(i => i.id === savedProduct.id)
+        
+        if (index >= 0) {
+            novoItensSalvos[index] = savedProduct
+             toast({
+                title: "Item atualizado",
+                description: "O item já existente foi atualizado com o novo valor.",
+            })
+        } else {
+            novoItensSalvos.push(savedProduct)
+            toast({
+                title: "Item salvo",
+                description: "Item adicionado à lista de itens salvos.",
+            })
+        }
 
-    if (itemExistente >= 0) {
-      novoItensSalvos[itemExistente] = { ...novoItensSalvos[itemExistente], valor: item.valor }
-      toast({
-        title: "Item atualizado",
-        description: "O item já existente foi atualizado com o novo valor.",
-      })
-    } else {
-      novoItensSalvos.push({ ...item, id: crypto.randomUUID() })
-      toast({
-        title: "Item salvo",
-        description: "Item adicionado à lista de itens salvos.",
-      })
+        setItensSalvos(novoItensSalvos)
+
+    } catch (error) {
+        console.error("Erro ao salvar item:", error)
+        toast({
+            title: "Erro ao salvar",
+            description: "Não foi possível salvar o item.",
+            variant: "destructive"
+        })
     }
-
-    setItensSalvos(novoItensSalvos)
-    localStorage.setItem("itensSalvos", JSON.stringify(novoItensSalvos))
   }
 
-  const removerItemSalvo = (id: string) => {
+  const removerItemSalvo = async (id: string) => {
     try {
+      await deleteProduct(id)
       const novoItensSalvos = itensSalvos.filter((item) => item.id !== id)
       setItensSalvos(novoItensSalvos)
-      localStorage.setItem("itensSalvos", JSON.stringify(novoItensSalvos))
 
       toast({
         title: "Item removido",
@@ -860,7 +949,7 @@ export default function OrcamentoPage() {
     return telefone
   }
 
-  const gerarOrcamento = () => {
+  const gerarOrcamento = async () => {
     if (!cliente.nome || !cliente.telefone) {
       toast({
         title: traduzir("Dados incompletos", "Incomplete data"),
@@ -911,21 +1000,31 @@ export default function OrcamentoPage() {
       idioma: idiomaOrcamento,
     }
 
-    // Adicionar ao histórico
-    const novoHistorico = [novoOrcamento, ...historico]
-    setHistorico(novoHistorico)
-    localStorage.setItem("historicoOrcamentos", JSON.stringify(novoHistorico))
+    try {
+      await saveBudget(novoOrcamento)
+      
+      // Adicionar ao histórico
+      const novoHistorico = [novoOrcamento, ...historico]
+      setHistorico(novoHistorico)
+      
+      setOrcamentoGerado(true)
+      setActiveTab("visualizar")
 
-    setOrcamentoGerado(true)
-    setActiveTab("visualizar")
-
-    toast({
-      title: traduzir("Orçamento gerado", "Budget generated"),
-      description: traduzir(
-        `Orçamento Nº ${novoNumeroOrcamento} gerado com sucesso!`,
-        `Budget No. ${novoNumeroOrcamento} generated successfully!`,
-      ),
-    })
+      toast({
+        title: traduzir("Orçamento gerado", "Budget generated"),
+        description: traduzir(
+          `Orçamento Nº ${novoNumeroOrcamento} gerado com sucesso!`,
+          `Budget No. ${novoNumeroOrcamento} generated successfully!`,
+        ),
+      })
+    } catch (error) {
+      console.error("Erro ao salvar orçamento:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar o orçamento.",
+        variant: "destructive"
+      })
+    }
   }
 
   const gerarPDF = async (elementoId = "orcamento-pdf") => {
@@ -987,21 +1086,30 @@ export default function OrcamentoPage() {
     setActiveTab("orcamento")
   }
 
-  const salvarConfiguracoes = (novasConfiguracoes) => {
-    setConfiguracoes(novasConfiguracoes)
-    localStorage.setItem("configuracoes", JSON.stringify(novasConfiguracoes))
-    toast({
-      title: "Configurações salvas",
-      description: "As configurações foram atualizadas com sucesso.",
-    })
+  const salvarConfiguracoes = async (novasConfiguracoes) => {
+    try {
+      await saveSettings(novasConfiguracoes)
+      setConfiguracoes(novasConfiguracoes)
+      toast({
+        title: "Configurações salvas",
+        description: "As configurações foram atualizadas com sucesso.",
+      })
+    } catch (error) {
+      console.error("Erro ao salvar configurações:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar as configurações.",
+        variant: "destructive"
+      })
+    }
   }
 
-  const removerOrcamentoHistorico = (id: string) => {
+  const removerOrcamentoHistorico = async (id: string) => {
     try {
+      await deleteBudget(id)
       const novoHistorico = historico.filter((orc) => orc.id !== id)
       setHistorico(novoHistorico)
-      localStorage.setItem("historicoOrcamentos", JSON.stringify(novoHistorico))
-
+      
       // Fechar o diálogo se o orçamento selecionado for o que está sendo removido
       if (orcamentoSelecionado && orcamentoSelecionado.id === id) {
         setOrcamentoSelecionado(null)
@@ -1021,10 +1129,12 @@ export default function OrcamentoPage() {
     }
   }
 
-  const limparHistorico = () => {
+  const limparHistorico = async () => {
     try {
+      // Remover um por um
+      await Promise.all(historico.map(orc => deleteBudget(orc.id)))
+
       setHistorico([])
-      localStorage.removeItem("historicoOrcamentos")
       setFiltroHistorico("")
       toast({
         title: "Histórico limpo",
@@ -1062,7 +1172,7 @@ export default function OrcamentoPage() {
     )
   }
 
-  const gerarContrato = () => {
+  const gerarContrato = async () => {
     if (!contratoAtual.contratante.nome || !contratoAtual.contratado.nome || !contratoAtual.objeto) {
       toast({
         title: "Dados incompletos",
@@ -1087,17 +1197,27 @@ export default function OrcamentoPage() {
       hora: horaFormatada,
     }
 
-    const novoHistoricoContratos = [novoContrato, ...historicoContratos]
-    setHistoricoContratos(novoHistoricoContratos)
-    localStorage.setItem("historicoContratos", JSON.stringify(novoHistoricoContratos))
+    try {
+      await saveContract(novoContrato)
 
-    setContratoAtual({ ...contratoAtual, numero: novoNumeroContrato, data: dataFormatada, hora: horaFormatada })
-    setContratoGerado(true)
+      const novoHistoricoContratos = [novoContrato, ...historicoContratos]
+      setHistoricoContratos(novoHistoricoContratos)
+      
+      setContratoAtual({ ...contratoAtual, numero: novoNumeroContrato, data: dataFormatada, hora: horaFormatada })
+      setContratoGerado(true)
 
-    toast({
-      title: "Contrato gerado",
-      description: `Contrato Nº ${novoNumeroContrato} gerado com sucesso!`,
-    })
+      toast({
+        title: "Contrato gerado",
+        description: `Contrato Nº ${novoNumeroContrato} gerado com sucesso!`,
+      })
+    } catch (error) {
+      console.error("Erro ao salvar contrato:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar o contrato.",
+        variant: "destructive"
+      })
+    }
   }
 
   const adicionarClausula = () => {
@@ -1149,12 +1269,12 @@ export default function OrcamentoPage() {
     )
   }
 
-  const removerContratoHistorico = (id: string) => {
+  const removerContratoHistorico = async (id: string) => {
     try {
+      await deleteContract(id)
       const novoHistoricoContratos = historicoContratos.filter((contrato) => contrato.id !== id)
       setHistoricoContratos(novoHistoricoContratos)
-      localStorage.setItem("historicoContratos", JSON.stringify(novoHistoricoContratos))
-
+      
       if (contratoSelecionado && contratoSelecionado.id === id) {
         setContratoSelecionado(null)
       }
@@ -1620,6 +1740,76 @@ export default function OrcamentoPage() {
                     </Button>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-red-200">
+              <CardHeader>
+                <CardTitle className="text-red-600">Diagnóstico do Sistema</CardTitle>
+                <CardDescription>Use esta ferramenta se estiver enfrentando problemas para salvar dados.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    try {
+                      toast({ title: "Testando conexão...", description: "Iniciando teste de escrita..." })
+
+                      const testId = crypto.randomUUID()
+                      console.log("Tentando inserir cliente teste:", testId)
+
+                      // 1. Insert
+                      const { data: insertData, error: insertError } = await supabase
+                        .from("clients")
+                        .insert({
+                          id: testId,
+                          name: "Teste Diagnóstico",
+                          phone: "000000000",
+                        })
+                        .select()
+                        .single()
+
+                      if (insertError) {
+                        alert(`ERRO AO INSERIR: ${JSON.stringify(insertError)}`)
+                        throw insertError
+                      }
+
+                      console.log("Inserção sucesso:", insertData)
+
+                      // 2. Select
+                      const { data: selectData, error: selectError } = await supabase
+                        .from("clients")
+                        .select("*")
+                        .eq("id", testId)
+                        .single()
+
+                      if (selectError) {
+                        alert(`ERRO AO LER: ${JSON.stringify(selectError)}`)
+                        throw selectError
+                      }
+
+                      // 3. Delete
+                      const { error: deleteError } = await supabase.from("clients").delete().eq("id", testId)
+
+                      if (deleteError) {
+                        alert(`ERRO AO DELETAR: ${JSON.stringify(deleteError)}`)
+                        throw deleteError
+                      }
+
+                      alert("SUCESSO TOTAL! O sistema está gravando, lendo e deletando corretamente do Supabase.")
+                      toast({ title: "Sucesso", description: "Teste de conexão concluído com sucesso!" })
+                    } catch (error: any) {
+                      console.error("Erro no diagnóstico:", error)
+                      toast({
+                        title: "Falha no Teste",
+                        description: error.message || "Verifique o alerta para mais detalhes",
+                        variant: "destructive",
+                      })
+                    }
+                  }}
+                >
+                  Testar Conexão e Gravação no Banco
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -2980,15 +3170,29 @@ export default function OrcamentoPage() {
                               type="file"
                               accept="image/*"
                               className="flex-1"
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const file = e.target.files?.[0]
                                 if (file) {
-                                  const reader = new FileReader()
-                                  reader.onload = (event) => {
-                                    const base64 = event.target?.result as string
-                                    setConfiguracoes({ ...configuracoes, logo: base64 })
+                                  try {
+                                    toast({
+                                      title: "Enviando imagem...",
+                                      description: "Aguarde enquanto a imagem é enviada para o servidor.",
+                                    })
+                                    const publicUrl = await uploadImage(file, 'images')
+                                    setConfiguracoes({ ...configuracoes, logo: publicUrl })
+                                    toast({
+                                      title: "Sucesso",
+                                      description: "Logo atualizada com sucesso!",
+                                    })
+                                  } catch (error) {
+                                    console.error("Erro upload:", error)
+                                    toast({
+                                      title: "Erro no upload",
+                                      description: "Falha ao enviar imagem. Verifique se o bucket 'images' existe no Supabase.",
+                                      variant: "destructive",
+                                    })
+                                    // Fallback to base64 if upload fails (optional, keeping old behavior as fallback if needed, but here just showing error)
                                   }
-                                  reader.readAsDataURL(file)
                                 }
                               }}
                             />
@@ -3712,18 +3916,6 @@ export default function OrcamentoPage() {
   }
 
   useEffect(() => {
-    // Carregar movimentações da carteira
-    const movimentacoesSalvas = localStorage.getItem("movimentacoesCarteira")
-    if (movimentacoesSalvas) {
-      setMovimentacoes(JSON.parse(movimentacoesSalvas))
-    }
-
-    // Carregar contas da carteira
-    const contasSalvas = localStorage.getItem("contasCarteira")
-    if (contasSalvas) {
-      setContas(JSON.parse(contasSalvas))
-    }
-
     // Buscar cotação do USD
     buscarCotacaoUSD()
 
@@ -3856,12 +4048,12 @@ export default function OrcamentoPage() {
     </div>
   )
 
-  function removerMovimentacao(id: string) {
+  async function removerMovimentacao(id: string) {
     try {
+      await deleteTransaction(id)
       const novasMovimentacoes = movimentacoes.filter((mov) => mov.id !== id)
       setMovimentacoes(novasMovimentacoes)
-      localStorage.setItem("movimentacoesCarteira", JSON.stringify(novasMovimentacoes))
-
+      
       toast({
         title: "Movimentação removida",
         description: "A movimentação foi removida com sucesso!",
