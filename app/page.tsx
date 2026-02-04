@@ -43,6 +43,8 @@ import {
   TrendingDown,
   DollarSign,
   Users,
+  Lock,
+  LogIn,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useData } from "@/hooks/use-data"
@@ -244,6 +246,35 @@ export default function OrcamentoPage() {
     email: "",
   })
   const [filtroClientes, setFiltroClientes] = useState<string>("")
+
+  // Estado de Login
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [loginPassword, setLoginPassword] = useState<string>("")
+
+  useEffect(() => {
+    const auth = localStorage.getItem("auth_felipe_admin")
+    if (auth === "true") {
+      setIsAuthenticated(true)
+    }
+  }, [])
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (loginPassword === "felipeadmin") {
+      setIsAuthenticated(true)
+      localStorage.setItem("auth_felipe_admin", "true")
+      toast({
+        title: "Login realizado",
+        description: "Bem-vindo ao sistema!",
+      })
+    } else {
+      toast({
+        title: "Acesso negado",
+        description: "Senha incorreta.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const menuItems = [
     { id: "orcamento", label: "Criar Orçamento", icon: Plus },
@@ -3950,6 +3981,46 @@ export default function OrcamentoPage() {
       // Não precisamos salvar as conversões, apenas usar para exibição
     }
   }, [moedaSelecionada, cotacaoUSD, movimentacoes])
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-lg">
+          <CardHeader className="space-y-1">
+            <div className="flex justify-center mb-6">
+              <div className="p-4 bg-blue-100 rounded-full">
+                <Lock className="w-12 h-12 text-blue-600" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl font-bold text-center">Sistema de Orçamentos</CardTitle>
+            <CardDescription className="text-center text-base">
+              Área restrita. Digite sua senha para acessar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin}>
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Senha de Administrador</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="text-lg"
+                  />
+                </div>
+                <Button type="submit" className="w-full text-lg h-12">
+                  <LogIn className="mr-2 h-5 w-5" /> Entrar no Sistema
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">
