@@ -42,6 +42,7 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
+  Users,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { jsPDF } from "jspdf"
@@ -95,6 +96,15 @@ interface Contrato {
   clausulas: string[]
   data: string
   hora: string
+}
+
+interface ClienteCadastro {
+  id: string
+  nome: string
+  cpfCnpj: string
+  endereco: string
+  telefone: string
+  email: string
 }
 
 export default function OrcamentoPage() {
@@ -211,10 +221,23 @@ export default function OrcamentoPage() {
   const [moedaContrato, setMoedaContrato] = useState<"BRL" | "USD">("BRL")
   const [idiomaContrato, setIdiomaContrato] = useState<"pt" | "en">("pt")
 
+  // Estados de Clientes
+  const [clientes, setClientes] = useState<ClienteCadastro[]>([])
+  const [novoCliente, setNovoCliente] = useState<ClienteCadastro>({
+    id: "",
+    nome: "",
+    cpfCnpj: "",
+    endereco: "",
+    telefone: "",
+    email: "",
+  })
+  const [filtroClientes, setFiltroClientes] = useState<string>("")
+
   const menuItems = [
     { id: "orcamento", label: "Criar Orçamento", icon: Plus },
     { id: "visualizar", label: "Visualizar Orçamento", icon: Eye, disabled: !orcamentoGerado },
     { id: "contratos", label: "Contratos", icon: FileText },
+    { id: "clientes", label: "Cadastro de Clientes", icon: Users },
     { id: "carteira", label: "Carteira", icon: Wallet },
     { id: "historico", label: "Histórico", icon: History },
     { id: "configuracoes", label: "Configurações", icon: Settings },
@@ -242,6 +265,12 @@ export default function OrcamentoPage() {
     const historicoContratosSalvo = localStorage.getItem("historicoContratos")
     if (historicoContratosSalvo) {
       setHistoricoContratos(JSON.parse(historicoContratosSalvo))
+    }
+
+    // Carregar clientes salvos
+    const clientesSalvos = localStorage.getItem("clientes")
+    if (clientesSalvos) {
+      setClientes(JSON.parse(clientesSalvos))
     }
   }, [])
 
@@ -397,6 +426,61 @@ export default function OrcamentoPage() {
       title: "Conta removida",
       description: `Conta "${nomeConta}" e suas movimentações foram removidas!`,
     })
+  }
+
+  // Funções de Clientes
+  const adicionarCliente = () => {
+    if (!novoCliente.nome) {
+      toast({
+        title: "Nome obrigatório",
+        description: "O nome do cliente é obrigatório.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    let novosClientes
+    if (novoCliente.id) {
+      // Editar
+      novosClientes = clientes.map((c) => (c.id === novoCliente.id ? novoCliente : c))
+      toast({
+        title: "Cliente atualizado",
+        description: "Dados do cliente atualizados com sucesso.",
+      })
+    } else {
+      // Novo
+      const cliente = { ...novoCliente, id: crypto.randomUUID() }
+      novosClientes = [cliente, ...clientes]
+      toast({
+        title: "Cliente cadastrado",
+        description: "Cliente cadastrado com sucesso.",
+      })
+    }
+
+    setClientes(novosClientes)
+    localStorage.setItem("clientes", JSON.stringify(novosClientes))
+    setNovoCliente({
+      id: "",
+      nome: "",
+      cpfCnpj: "",
+      endereco: "",
+      telefone: "",
+      email: "",
+    })
+  }
+
+  const removerCliente = (id: string) => {
+    const novosClientes = clientes.filter((c) => c.id !== id)
+    setClientes(novosClientes)
+    localStorage.setItem("clientes", JSON.stringify(novosClientes))
+    toast({
+      title: "Cliente removido",
+      description: "Cliente removido com sucesso.",
+    })
+  }
+
+  const carregarClienteParaEdicao = (cliente: ClienteCadastro) => {
+    setNovoCliente(cliente)
   }
 
   // Modificar a função filtrarMovimentacoes para filtrar por conta
@@ -1326,6 +1410,28 @@ export default function OrcamentoPage() {
                 <CardContent>
                   <div className="grid gap-4">
                     <div className="grid gap-2">
+                      <Label>Selecionar Cliente Cadastrado</Label>
+                      <Select
+                        onValueChange={(value) => {
+                          const clienteSelecionado = clientes.find((c) => c.id === value)
+                          if (clienteSelecionado) {
+                            setCliente({ nome: clienteSelecionado.nome, telefone: clienteSelecionado.telefone })
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um cliente..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clientes.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
                       <Label htmlFor="nome">{traduzir("Nome", "Name")}</Label>
                       <Input
                         id="nome"
@@ -1699,6 +1805,37 @@ export default function OrcamentoPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label>Selecionar Contratante Cadastrado</Label>
+                        <Select
+                          onValueChange={(value) => {
+                            const clienteSelecionado = clientes.find((c) => c.id === value)
+                            if (clienteSelecionado) {
+                              setContratoAtual({
+                                ...contratoAtual,
+                                contratante: {
+                                  nome: clienteSelecionado.nome,
+                                  cpfCnpj: clienteSelecionado.cpfCnpj,
+                                  endereco: clienteSelecionado.endereco,
+                                  telefone: clienteSelecionado.telefone,
+                                  email: clienteSelecionado.email,
+                                },
+                              })
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um cliente..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clientes.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="grid gap-2">
                         <Label htmlFor="contratante-nome">
                           {traduzirContrato("Nome/Razão Social *", "Name/Company Name *")}
@@ -2629,6 +2766,153 @@ export default function OrcamentoPage() {
               </div>
             </CardContent>
           </Card>
+        )
+
+      case "clientes":
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Cadastro de Clientes</CardTitle>
+                <CardDescription>Gerencie seus clientes para usar em orçamentos e contratos.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="nomeCliente">Nome / Razão Social *</Label>
+                      <Input
+                        id="nomeCliente"
+                        value={novoCliente.nome}
+                        onChange={(e) => setNovoCliente({ ...novoCliente, nome: e.target.value })}
+                        placeholder="Nome do cliente ou empresa"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="cpfCnpjCliente">CPF / CNPJ</Label>
+                      <Input
+                        id="cpfCnpjCliente"
+                        value={novoCliente.cpfCnpj}
+                        onChange={(e) => setNovoCliente({ ...novoCliente, cpfCnpj: e.target.value })}
+                        placeholder="000.000.000-00"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="enderecoCliente">Endereço</Label>
+                    <Input
+                      id="enderecoCliente"
+                      value={novoCliente.endereco}
+                      onChange={(e) => setNovoCliente({ ...novoCliente, endereco: e.target.value })}
+                      placeholder="Rua, Número, Bairro, Cidade - UF"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="telefoneCliente">Telefone</Label>
+                      <Input
+                        id="telefoneCliente"
+                        value={novoCliente.telefone}
+                        onChange={(e) => setNovoCliente({ ...novoCliente, telefone: e.target.value })}
+                        placeholder="(00) 00000-0000"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="emailCliente">Email</Label>
+                      <Input
+                        id="emailCliente"
+                        type="email"
+                        value={novoCliente.email}
+                        onChange={(e) => setNovoCliente({ ...novoCliente, email: e.target.value })}
+                        placeholder="cliente@email.com"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    {novoCliente.id && (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setNovoCliente({
+                            id: "",
+                            nome: "",
+                            cpfCnpj: "",
+                            endereco: "",
+                            telefone: "",
+                            email: "",
+                          })
+                        }
+                      >
+                        Cancelar Edição
+                      </Button>
+                    )}
+                    <Button onClick={adicionarCliente}>
+                      {novoCliente.id ? "Atualizar Cliente" : "Cadastrar Cliente"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium">Clientes Cadastrados</h3>
+                    <div className="w-full md:w-1/3">
+                      <Input
+                        placeholder="Buscar cliente..."
+                        value={filtroClientes}
+                        onChange={(e) => setFiltroClientes(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nome</TableHead>
+                          <TableHead>Telefone</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clientes
+                          .filter(
+                            (c) =>
+                              c.nome.toLowerCase().includes(filtroClientes.toLowerCase()) ||
+                              c.cpfCnpj.includes(filtroClientes) ||
+                              c.email.toLowerCase().includes(filtroClientes.toLowerCase()),
+                          )
+                          .map((cliente) => (
+                            <TableRow key={cliente.id}>
+                              <TableCell className="font-medium">{cliente.nome}</TableCell>
+                              <TableCell>{cliente.telefone}</TableCell>
+                              <TableCell>{cliente.email}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button variant="ghost" size="icon" onClick={() => carregarClienteParaEdicao(cliente)}>
+                                    <Settings className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" onClick={() => removerCliente(cliente.id)}>
+                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        {clientes.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                              Nenhum cliente cadastrado.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )
 
       case "configuracoes":
