@@ -149,7 +149,10 @@ export function useData() {
       data: contract.date,
       hora: contract.time,
       moeda: contract.currency,
-      idioma: contract.language
+      idioma: contract.language,
+      clientSignature: contract.client_signature,
+      clientSignedAt: contract.client_signed_at,
+      status: contract.status
     }))
   }
 
@@ -169,7 +172,10 @@ export function useData() {
       date: contract.data,
       time: contract.hora,
       currency: contract.moeda || 'BRL',
-      language: contract.idioma || 'pt'
+      language: contract.idioma || 'pt',
+      client_signature: contract.clientSignature,
+      client_signed_at: contract.clientSignedAt,
+      status: contract.status
     }
 
     const { data, error } = await supabase.from('contracts').upsert(dbContract).select().single()
@@ -188,12 +194,49 @@ export function useData() {
       data: data.date,
       hora: data.time,
       moeda: data.currency,
-      idioma: data.language
+      idioma: data.language,
+      clientSignature: data.client_signature,
+      clientSignedAt: data.client_signed_at,
+      status: data.status
     }
   }
 
   const deleteContract = async (id: string) => {
     const { error } = await supabase.from('contracts').delete().eq('id', id)
+    if (error) throw error
+  }
+
+  const getContractById = async (id: string) => {
+    const { data, error } = await supabase.from('contracts').select('*').eq('id', id).single()
+    if (error) throw error
+    return {
+      id: data.id,
+      numero: data.number,
+      titulo: data.title,
+      contratante: data.contractor_data,
+      contratado: data.hired_data,
+      objeto: data.object,
+      valor: data.value,
+      prazoExecucao: data.execution_term,
+      formaPagamento: data.payment_method,
+      clausulas: data.clauses,
+      data: data.date,
+      hora: data.time,
+      moeda: data.currency,
+      idioma: data.language,
+      clientSignature: data.client_signature,
+      clientSignedAt: data.client_signed_at,
+      status: data.status
+    }
+  }
+
+  const signContract = async (id: string, signatureUrl: string) => {
+    const { error } = await supabase.from('contracts').update({
+      client_signature: signatureUrl,
+      client_signed_at: new Date().toISOString(),
+      status: 'signed'
+    }).eq('id', id)
+    
     if (error) throw error
   }
 
@@ -281,6 +324,7 @@ export function useData() {
       diasValidade: data.validity_days,
       logo: data.logo_url,
       slogan: data.slogan,
+      assinaturaContratado: data.contractor_signature_url,
       dadosContratado: data.contractor_data
     }
   }
@@ -292,6 +336,7 @@ export function useData() {
       validity_days: settings.diasValidade,
       logo_url: settings.logo,
       slogan: settings.slogan,
+      contractor_signature_url: settings.assinaturaContratado,
       contractor_data: settings.dadosContratado
     }
     
@@ -318,7 +363,7 @@ export function useData() {
   }
 
   // Image Upload
-  const uploadImage = async (file: File, bucket: 'images') => {
+  const uploadImage = async (file: File, bucket: string = 'images') => {
     const fileExt = file.name.split('.').pop()
     const fileName = `${Math.random()}.${fileExt}`
     const filePath = `${fileName}`
@@ -346,6 +391,8 @@ export function useData() {
     fetchContracts,
     saveContract,
     deleteContract,
+    getContractById,
+    signContract,
     fetchTransactions,
     saveTransaction,
     deleteTransaction,

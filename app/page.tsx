@@ -45,6 +45,8 @@ import {
   Users,
   Lock,
   LogIn,
+  Link,
+  Loader2,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useData } from "@/hooks/use-data"
@@ -100,6 +102,11 @@ interface Contrato {
   clausulas: string[]
   data: string
   hora: string
+  moeda?: "BRL" | "USD"
+  idioma?: "pt" | "en"
+  clientSignature?: string
+  clientSignedAt?: string
+  status?: string
 }
 
 interface ClienteCadastro {
@@ -821,7 +828,7 @@ export default function OrcamentoPage() {
     })
   }
 
-  const saveSignature = () => {
+  const saveSignature = async () => {
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -850,13 +857,36 @@ export default function OrcamentoPage() {
       return
     }
 
-    const dataURL = canvas.toDataURL("image/png")
-    setConfiguracoes({ ...configuracoes, assinaturaContratado: dataURL })
+    try {
+      toast({
+        title: "Salvando assinatura...",
+        description: "Aguarde enquanto a imagem é enviada.",
+      })
 
-    toast({
-      title: "Assinatura salva",
-      description: "Sua assinatura foi salva com sucesso.",
-    })
+      const dataURL = canvas.toDataURL("image/png")
+      const res = await fetch(dataURL)
+      const blob = await res.blob()
+      const file = new File([blob], `signature_contractor.png`, { type: "image/png" })
+
+      const signatureUrl = await uploadImage(file, 'images')
+      
+      const novasConfiguracoes = { ...configuracoes, assinaturaContratado: signatureUrl }
+      setConfiguracoes(novasConfiguracoes)
+      
+      await saveSettings(novasConfiguracoes)
+
+      toast({
+        title: "Assinatura salva",
+        description: "Sua assinatura foi salva com sucesso no banco de dados.",
+      })
+    } catch (error) {
+      console.error("Erro ao salvar assinatura:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar a assinatura.",
+        variant: "destructive",
+      })
+    }
   }
 
   const adicionarItem = () => {
@@ -1234,7 +1264,7 @@ export default function OrcamentoPage() {
       const novoHistoricoContratos = [novoContrato, ...historicoContratos]
       setHistoricoContratos(novoHistoricoContratos)
       
-      setContratoAtual({ ...contratoAtual, numero: novoNumeroContrato, data: dataFormatada, hora: horaFormatada })
+      setContratoAtual({ ...novoContrato })
       setContratoGerado(true)
 
       toast({
@@ -1265,6 +1295,15 @@ export default function OrcamentoPage() {
     setContratoAtual({
       ...contratoAtual,
       clausulas: contratoAtual.clausulas.filter((_, i) => i !== index),
+    })
+  }
+
+  const copyContractLink = (id: string) => {
+    const link = `${window.location.origin}/contrato/${id}`
+    navigator.clipboard.writeText(link)
+    toast({
+      title: "Link copiado!",
+      description: "Link para assinatura copiado para a área de transferência.",
     })
   }
 
@@ -2431,6 +2470,9 @@ export default function OrcamentoPage() {
             ) : (
               <div className="space-y-6">
                 <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => copyContractLink(contratoAtual.id)}>
+                    <Link className="mr-2 h-4 w-4" /> {traduzirContrato("Link Assinatura", "Sign Link")}
+                  </Button>
                   <Button variant="outline" onClick={() => gerarPDFContrato("contrato-pdf")}>
                     <FileDown className="mr-2 h-4 w-4" /> {traduzirContrato("Baixar PDF", "Download PDF")}
                   </Button>
@@ -2646,6 +2688,17 @@ export default function OrcamentoPage() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-16">
                         <div className="text-center">
+                          <div className="h-20 flex items-end justify-center mb-2">
+                            {contratoAtual.clientSignature ? (
+                              <img
+                                src={contratoAtual.clientSignature}
+                                alt="Assinatura do Contratante"
+                                className="max-h-20 w-auto object-contain"
+                              />
+                            ) : (
+                              <div className="text-gray-400 text-sm italic mb-2">Aguardando assinatura...</div>
+                            )}
+                          </div>
                           <div className="border-t-2 border-gray-400 pt-3 mx-4">
                             <p className="font-bold text-base">{contratoAtual.contratante.nome}</p>
                             <p className="text-xs text-gray-600 uppercase tracking-wide">CONTRATANTE</p>
@@ -2653,15 +2706,17 @@ export default function OrcamentoPage() {
                           </div>
                         </div>
                         <div className="text-center">
-                          {configuracoes.assinaturaContratado ? (
-                            <div className="mb-2">
+                          <div className="h-20 flex items-end justify-center mb-2">
+                            {configuracoes.assinaturaContratado ? (
                               <img
-                                src={configuracoes.assinaturaContratado || "/placeholder.svg"}
+                                src={configuracoes.assinaturaContratado}
                                 alt="Assinatura do Contratado"
-                                className="h-16 w-auto mx-auto mb-2"
+                                className="max-h-20 w-auto object-contain"
                               />
-                            </div>
-                          ) : null}
+                            ) : (
+                              <p className="font-serif text-2xl italic text-gray-600">{contratoAtual.contratado.nome}</p>
+                            )}
+                          </div>
                           <div className="border-t-2 border-gray-400 pt-3 mx-4">
                             <p className="font-bold text-base">{contratoAtual.contratado.nome}</p>
                             <p className="text-xs text-gray-600 uppercase tracking-wide">CONTRATADO</p>
@@ -2739,6 +2794,14 @@ export default function OrcamentoPage() {
                                 <TableCell>{contrato.valor > 0 ? formatarMoeda(contrato.valor) : "-"}</TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => copyContractLink(contrato.id)}
+                                      title="Copiar Link de Assinatura"
+                                    >
+                                      <Link className="h-4 w-4 text-green-600" />
+                                    </Button>
                                     <Button
                                       variant="ghost"
                                       size="icon"
