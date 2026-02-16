@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, CheckCircle, Save, X } from "lucide-react"
+import { jsPDF } from "jspdf"
+import html2canvas from "html2canvas"
 
 export default function ContratoPage() {
   const { id } = useParams()
@@ -15,6 +17,7 @@ export default function ContratoPage() {
   
   const [contrato, setContrato] = useState<any>(null)
   const [assinaturaContratado, setAssinaturaContratado] = useState<string | null>(null)
+  const [settings, setSettings] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   
@@ -38,9 +41,12 @@ export default function ContratoPage() {
       ])
       
       setContrato(contractData)
-      if (settingsData && settingsData.assinaturaContratado) {
-        setAssinaturaContratado(settingsData.assinaturaContratado)
-      }
+      if (settingsData) {
+        setSettings(settingsData)
+        if (settingsData.assinaturaContratado) {
+          setAssinaturaContratado(settingsData.assinaturaContratado)
+        }
+      } 
     } catch (error) {
       console.error("Erro ao carregar contrato:", error)
       toast({
@@ -182,6 +188,50 @@ export default function ContratoPage() {
     }
   }
 
+  const gerarPDFAssinado = async () => {
+    const element = document.getElementById("contrato-publico")
+    if (!element) return
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+      })
+
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF("p", "mm", "a4")
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+
+      const imgWidth = pageWidth
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      let position = 0
+      let heightLeft = imgHeight
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST")
+      heightLeft -= pageHeight
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST")
+        heightLeft -= pageHeight
+      }
+
+      pdf.save(`Contrato_${contrato.numero || "assinado"}.pdf`)
+    } catch (error) {
+      console.error("Erro ao gerar PDF assinado:", error)
+      toast({
+        title: "Erro ao gerar PDF",
+        description: "Não foi possível gerar o PDF do contrato assinado.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const formatarMoeda = (valor: number, moeda: string) => {
     if (moeda === "BRL") {
       return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -213,119 +263,139 @@ export default function ContratoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm">
-           <h1 className="text-xl font-bold text-gray-800">Visualização de Contrato</h1>
-           {contrato.status === 'signed' && (
-             <div className="flex items-center text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
-               <CheckCircle className="w-4 h-4 mr-2" />
-               Assinado
-             </div>
-           )}
-        </div>
+        <div className="bg-white rounded-xl shadow border overflow-hidden" id="contrato-publico">
+          <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-slate-50 to-white">
+            <div className="flex items-center gap-4">
+              {settings?.logo ? (
+                <img src={settings.logo} alt={settings?.nomeEmpresa || "Empresa"} className="h-12 w-auto rounded-sm" />
+              ) : (
+                <div className="text-xl font-bold text-slate-800">{settings?.nomeEmpresa || "Empresa"}</div>
+              )}
+              <div className="hidden md:block">
+                <div className="text-sm text-slate-500">{settings?.slogan}</div>
+                <div className="text-xs text-slate-400">WhatsApp: {settings?.whatsapp}</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-3 py-1.5 rounded-md text-sm font-medium">
+                <span>Contrato Nº {contrato.numero}</span>
+                {contrato.status === "signed" && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">{contrato.data} • {contrato.hora}</div>
+            </div>
+          </div>
+          <div className="p-8 md:p-12 font-serif text-slate-900">
+            <div className="text-center mb-10">
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-wide mb-1">CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
+              {contrato.titulo && <p className="text-slate-500">{contrato.titulo}</p>}
+            </div>
 
-        <Card className="shadow-lg">
-          <CardContent className="p-8 md:p-12 font-serif text-gray-900 bg-white">
-            <div className="text-center mb-12">
-              <h1 className="text-2xl font-bold uppercase mb-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
-              <p className="text-gray-500">Nº {contrato.numero}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="rounded-lg border bg-slate-50 p-5">
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">CONTRATANTE</h3>
+                <div className="space-y-1.5 text-sm">
+                  <p><span className="font-medium">Nome:</span> {contrato.contratante.nome}</p>
+                  <p><span className="font-medium">CPF/CNPJ:</span> {contrato.contratante.cpfCnpj}</p>
+                  <p><span className="font-medium">Endereço:</span> {contrato.contratante.endereco}</p>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-slate-50 p-5">
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">CONTRATADO</h3>
+                <div className="space-y-1.5 text-sm">
+                  <p><span className="font-medium">Nome:</span> {contrato.contratado.nome}</p>
+                  <p><span className="font-medium">CPF/CNPJ:</span> {contrato.contratado.cpfCnpj}</p>
+                  <p><span className="font-medium">Endereço:</span> {contrato.contratado.endereco}</p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-6 text-justify leading-relaxed">
-              <div className="bg-gray-50 p-6 rounded-md mb-6 border-l-4 border-blue-500">
-                <h3 className="font-bold text-lg mb-3 text-blue-700">1. CONTRATANTE:</h3>
-                <div className="space-y-1 text-sm">
-                  <p><span className="font-semibold">Nome:</span> {contrato.contratante.nome}</p>
-                  <p><span className="font-semibold">CPF/CNPJ:</span> {contrato.contratante.cpfCnpj}</p>
-                  <p><span className="font-semibold">Endereço:</span> {contrato.contratante.endereco}</p>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 p-6 rounded-md mb-6 border-l-4 border-green-500">
-                <h3 className="font-bold text-lg mb-3 text-green-700">2. CONTRATADO:</h3>
-                <div className="space-y-1 text-sm">
-                  <p><span className="font-semibold">Nome:</span> {contrato.contratado.nome}</p>
-                  <p><span className="font-semibold">CPF/CNPJ:</span> {contrato.contratado.cpfCnpj}</p>
-                  <p><span className="font-semibold">Endereço:</span> {contrato.contratado.endereco}</p>
+              <div>
+                <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULA 1ª - DO OBJETO</h3>
+                <div className="rounded-lg border bg-white p-5">
+                  <p>{contrato.objeto}</p>
                 </div>
               </div>
 
               <div>
-                <h3 className="font-bold text-lg mb-2">CLÁUSULA 1ª - DO OBJETO</h3>
-                <p>{contrato.objeto}</p>
-              </div>
-
-              <div>
-                <h3 className="font-bold text-lg mb-2">CLÁUSULA 2ª - DO VALOR E PAGAMENTO</h3>
-                <p>
-                  O valor total dos serviços contratados é de <span className="font-bold">{formatarMoeda(contrato.valor, contrato.moeda)}</span>.
-                </p>
-                <p>Forma de pagamento: {contrato.formaPagamento}</p>
+                <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULA 2ª - DO VALOR E PAGAMENTO</h3>
+                <div className="rounded-lg border bg-white p-5 space-y-1.5">
+                  <p>Valor total: <span className="font-bold">{formatarMoeda(contrato.valor, contrato.moeda)}</span></p>
+                  <p>Forma de pagamento: {contrato.formaPagamento}</p>
+                </div>
               </div>
 
               {contrato.prazoExecucao && (
                 <div>
-                  <h3 className="font-bold text-lg mb-2">CLÁUSULA 3ª - DO PRAZO</h3>
-                  <p>Prazo de execução: {contrato.prazoExecucao}</p>
+                  <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULA 3ª - DO PRAZO</h3>
+                  <div className="rounded-lg border bg-white p-5">
+                    <p>Prazo de execução: {contrato.prazoExecucao}</p>
+                  </div>
                 </div>
               )}
 
               {contrato.clausulas && contrato.clausulas.length > 0 && (
-                 <div>
-                   <h3 className="font-bold text-lg mb-2">CLÁUSULA 4ª - DISPOSIÇÕES GERAIS</h3>
-                   <ul className="list-disc pl-5 space-y-2">
-                     {contrato.clausulas.map((c: string, i: number) => (
-                       <li key={i}>{c}</li>
-                     ))}
-                   </ul>
-                 </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULAS ESPECÍFICAS</h3>
+                  <div className="rounded-lg border bg-white p-5">
+                    <ul className="list-disc pl-5 space-y-2">
+                      {contrato.clausulas.map((c: string, i: number) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               )}
 
-              <div className="pt-12 mt-12 border-t">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                   {/* Assinatura Contratado (Empresa) */}
-                   <div className="text-center">
-                     <div className="h-20 flex items-end justify-center">
-                        {assinaturaContratado ? (
-                          <img src={assinaturaContratado} alt="Assinatura do Contratado" className="max-h-20 object-contain" />
-                        ) : (
-                          <p className="font-signature text-2xl mb-2 italic">{contrato.contratado.nome}</p>
-                        )}
-                     </div>
-                     <div className="border-t border-gray-400 pt-2">
-                       <p className="font-bold">{contrato.contratado.nome}</p>
-                       <p className="text-sm text-gray-500">CONTRATADO</p>
-                     </div>
-                   </div>
+              <div className="pt-8 mt-8 border-t">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                  <div className="text-center">
+                    <div className="h-20 flex items-end justify-center">
+                      {assinaturaContratado ? (
+                        <img src={assinaturaContratado} alt="Assinatura do Contratado" className="max-h-20 object-contain" />
+                      ) : (
+                        <div className="text-slate-400 italic mb-2">{contrato.contratado.nome}</div>
+                      )}
+                    </div>
+                    <div className="border-t border-slate-300 pt-2">
+                      <p className="font-bold">{contrato.contratado.nome}</p>
+                      <p className="text-xs text-slate-500">CONTRATADO</p>
+                    </div>
+                  </div>
 
-                   {/* Assinatura Contratante (Cliente) */}
-                   <div className="text-center">
-                     <div className="h-20 flex items-end justify-center">
-                        {contrato.clientSignature ? (
-                          <img src={contrato.clientSignature} alt="Assinatura do Cliente" className="max-h-20 object-contain" />
-                        ) : (
-                          <div className="text-gray-400 text-sm italic mb-2">Aguardando assinatura...</div>
-                        )}
-                     </div>
-                     <div className="border-t border-gray-400 pt-2">
-                       <p className="font-bold">{contrato.contratante.nome}</p>
-                       <p className="text-sm text-gray-500">CONTRATANTE</p>
-                       {contrato.clientSignedAt && (
-                         <p className="text-xs text-gray-400 mt-1">
-                           Assinado em: {new Date(contrato.clientSignedAt).toLocaleString()}
-                         </p>
-                       )}
-                     </div>
-                   </div>
+                  <div className="text-center">
+                    <div className="h-20 flex items-end justify-center">
+                      {contrato.clientSignature ? (
+                        <img src={contrato.clientSignature} alt="Assinatura do Contratante" className="max-h-20 object-contain" />
+                      ) : (
+                        <div className="text-slate-400 italic mb-2">Aguardando assinatura...</div>
+                      )}
+                    </div>
+                    <div className="border-t border-slate-300 pt-2">
+                      <p className="font-bold">{contrato.contratante.nome}</p>
+                      <p className="text-xs text-slate-500">CONTRATANTE</p>
+                      {contrato.clientSignedAt && (
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Assinado em {new Date(contrato.clientSignedAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Área de Assinatura (se não estiver assinado) */}
-        {!contrato.clientSignature && (
+            <div className="mt-10 text-center text-xs text-slate-500 border-t pt-4">
+              <div className="font-medium">{settings?.nomeEmpresa}</div>
+              <div>WhatsApp: {settings?.whatsapp}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Área de Assinatura / Download */}
+        {!contrato.clientSignature ? (
           <Card className="border-blue-200 bg-blue-50">
             <CardHeader>
               <CardTitle className="text-blue-800">Assinatura do Contratante</CardTitle>
@@ -367,6 +437,23 @@ export default function ContratoPage() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-emerald-200 bg-emerald-50">
+            <CardHeader>
+              <CardTitle className="text-emerald-800 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                Contrato assinado
+              </CardTitle>
+              <CardDescription>
+                Sua assinatura foi registrada. Você pode fazer o download do contrato assinado em PDF.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={gerarPDFAssinado} className="bg-emerald-600 hover:bg-emerald-700">
+                Baixar PDF assinado
+              </Button>
             </CardContent>
           </Card>
         )}

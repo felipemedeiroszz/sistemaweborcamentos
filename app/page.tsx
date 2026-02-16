@@ -47,6 +47,7 @@ import {
   LogIn,
   Link,
   Loader2,
+  CheckCircle,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useData } from "@/hooks/use-data"
@@ -178,6 +179,7 @@ export default function OrcamentoPage() {
   const [historicoContratos, setHistoricoContratos] = useState<Contrato[]>([])
   const [contratoSelecionado, setContratoSelecionado] = useState<Contrato | null>(null)
   const [filtroContratos, setFiltroContratos] = useState<string>("")
+  const [filtroHistoricoContratos, setFiltroHistoricoContratos] = useState<string>("")
   const [novaClausula, setNovaClausula] = useState<string>("")
 
   const [clausulasPredefinidas] = useState([
@@ -287,9 +289,10 @@ export default function OrcamentoPage() {
     { id: "orcamento", label: "Criar Orçamento", icon: Plus },
     { id: "visualizar", label: "Visualizar Orçamento", icon: Eye, disabled: !orcamentoGerado },
     { id: "contratos", label: "Contratos", icon: FileText },
+    { id: "historico-contratos", label: "Histórico de Contratos", icon: History },
     { id: "clientes", label: "Cadastro de Clientes", icon: Users },
     { id: "carteira", label: "Carteira", icon: Wallet },
-    { id: "historico", label: "Histórico", icon: History },
+    { id: "historico", label: "Histórico de Orçamentos", icon: History },
     { id: "configuracoes", label: "Configurações", icon: Settings },
   ]
 
@@ -1339,6 +1342,19 @@ export default function OrcamentoPage() {
     )
   }
 
+  const filtrarHistoricoContratos = () => {
+    if (!filtroHistoricoContratos) return historicoContratos
+
+    const termoBusca = filtroHistoricoContratos.toLowerCase()
+    return historicoContratos.filter(
+      (contrato) =>
+        contrato.numero.includes(termoBusca) ||
+        contrato.contratante.nome.toLowerCase().includes(termoBusca) ||
+        contrato.contratado.nome.toLowerCase().includes(termoBusca) ||
+        formatarMoeda(contrato.valor).toLowerCase().includes(termoBusca),
+    )
+  }
+
   const removerContratoHistorico = async (id: string) => {
     try {
       await deleteContract(id)
@@ -1358,6 +1374,39 @@ export default function OrcamentoPage() {
       toast({
         title: "Erro ao remover",
         description: "Não foi possível remover o contrato. Tente novamente.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const marcarContratoPago = async (contrato: Contrato) => {
+    try {
+      const titulo = contrato.titulo && contrato.titulo.trim().length > 0 ? contrato.titulo : `Contrato Nº ${contrato.numero}`
+      const movimentacao = {
+        id: crypto.randomUUID(),
+        tipo: "entrada" as "entrada" | "saida",
+        titulo: `Pagamento - ${titulo}`,
+        observacao: `Pagamento do contrato ${contrato.numero} - ${contrato.contratante.nome}`,
+        data: new Date().toISOString(),
+        valor: contrato.valor > 0 ? contrato.valor : 0,
+        formaPagamento: "contrato",
+        motivo: "contrato",
+        moeda: (contrato.moeda as "BRL" | "USD") || "BRL",
+        conta: "Principal",
+      }
+      
+      const saved = await saveTransaction(movimentacao)
+      setMovimentacoes([saved, ...movimentacoes])
+      
+      toast({
+        title: "Pagamento registrado",
+        description: `Entrada adicionada na carteira Principal: ${titulo} - ${formatarMoeda(movimentacao.valor)}`,
+      })
+    } catch (error) {
+      console.error("Erro ao marcar como pago:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível registrar o pagamento na carteira.",
         variant: "destructive",
       })
     }
@@ -2486,268 +2535,200 @@ export default function OrcamentoPage() {
 
                 <div
                   id="contrato-pdf"
-                  className="bg-white p-8 rounded-lg border shadow-sm print:shadow-none print:border-none max-w-4xl mx-auto"
+                  className="bg-white rounded-xl border shadow-sm print:shadow-none print:border-none max-w-4xl mx-auto overflow-hidden"
                   style={{ fontFamily: "Times New Roman, serif" }}
                 >
-                  <div className="text-center mb-8">
-                    <div className="flex justify-center mb-4">
-                      <img
-                        src={configuracoes.logo || "/LOGON.png"}
-                        alt={configuracoes.nomeEmpresa}
-                        className="h-20 w-auto"
-                      />
+                  <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-slate-50 to-white">
+                    <div className="flex items-center gap-4">
+                      {configuracoes.logo ? (
+                        <img
+                          src={configuracoes.logo}
+                          alt={configuracoes.nomeEmpresa || "Empresa"}
+                          className="h-12 w-auto rounded-sm"
+                        />
+                      ) : (
+                        <div className="text-xl font-bold text-slate-800">
+                          {configuracoes.nomeEmpresa || "Empresa"}
+                        </div>
+                      )}
+                      <div className="hidden md:block">
+                        {configuracoes.slogan && (
+                          <div className="text-sm text-slate-500">{configuracoes.slogan}</div>
+                        )}
+                        {configuracoes.whatsapp && (
+                          <div className="text-xs text-slate-400">WhatsApp: {configuracoes.whatsapp}</div>
+                        )}
+                      </div>
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-800 mb-4">
-                      {traduzirContrato("CONTRATO DE PRESTAÇÃO DE SERVIÇOS", "SERVICE AGREEMENT CONTRACT")}
-                    </h1>
-                    <h2 className="text-xl font-semibold text-gray-700 mb-2">
-                      {traduzirContrato("DE TECNOLOGIA DA INFORMAÇÃO", "INFORMATION TECHNOLOGY SERVICES")}
-                    </h2>
-                    {contratoAtual.titulo && (
-                      <h3 className="text-lg font-medium text-blue-600 mb-2">{contratoAtual.titulo}</h3>
-                    )}
-                    <p className="text-lg font-semibold text-blue-700">Contrato Nº {contratoAtual.numero}</p>
-                    <p className="text-sm text-gray-600 mt-2">
-                      {contratoAtual.data} - {contratoAtual.hora}
-                    </p>
+                    <div className="text-right">
+                      <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-3 py-1.5 rounded-md text-sm font-medium">
+                        <span>Contrato Nº {contratoAtual.numero}</span>
+                        {contratoAtual.status === "signed" && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">
+                        {contratoAtual.data} • {contratoAtual.hora}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-6 text-sm leading-relaxed text-justify">
-                    <div className="mb-6">
-                      <p className="mb-4 text-base">
-                        Pelo presente instrumento particular de{" "}
-                        <strong>CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE TECNOLOGIA DA INFORMAÇÃO</strong>, as partes abaixo
-                        qualificadas:
-                      </p>
+                  <div className="p-8 md:p-12 font-serif text-slate-900">
+                    <div className="text-center mb-10">
+                      <h1 className="text-2xl md:text-3xl font-extrabold tracking-wide mb-1">
+                        CONTRATO DE PRESTAÇÃO DE SERVIÇOS
+                      </h1>
+                      {contratoAtual.titulo && <p className="text-slate-500">{contratoAtual.titulo}</p>}
+                    </div>
 
-                      <div className="bg-gray-50 p-6 rounded-md mb-6 border-l-4 border-blue-500">
-                        <h3 className="font-bold text-lg mb-3 text-blue-700">
-                          {traduzirContrato("1. CONTRATANTE:", "1. CONTRACTOR:")}
-                        </h3>
-                        <div className="space-y-1">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                      <div className="rounded-lg border bg-slate-50 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-3">CONTRATANTE</h3>
+                        <div className="space-y-1.5 text-sm">
                           <p>
-                            <span className="font-semibold">Nome/Razão Social:</span> {contratoAtual.contratante.nome}
+                            <span className="font-medium">Nome:</span> {contratoAtual.contratante.nome}
                           </p>
                           <p>
-                            <span className="font-semibold">CPF/CNPJ:</span> {contratoAtual.contratante.cpfCnpj}
+                            <span className="font-medium">CPF/CNPJ:</span> {contratoAtual.contratante.cpfCnpj}
                           </p>
                           {contratoAtual.contratante.endereco && (
                             <p>
-                              <span className="font-semibold">Endereço:</span> {contratoAtual.contratante.endereco}
+                              <span className="font-medium">Endereço:</span> {contratoAtual.contratante.endereco}
                             </p>
                           )}
                           {contratoAtual.contratante.telefone && (
                             <p>
-                              <span className="font-semibold">Telefone:</span>{" "}
+                              <span className="font-medium">Telefone:</span>{" "}
                               {formatarTelefone(contratoAtual.contratante.telefone)}
                             </p>
                           )}
                           {contratoAtual.contratante.email && (
                             <p>
-                              <span className="font-semibold">E-mail:</span> {contratoAtual.contratante.email}
+                              <span className="font-medium">E-mail:</span> {contratoAtual.contratante.email}
                             </p>
                           )}
                         </div>
                       </div>
-
-                      <div className="bg-gray-50 p-6 rounded-md mb-6 border-l-4 border-green-500">
-                        <h3 className="font-bold text-lg mb-3 text-green-700">
-                          {traduzirContrato("2. CONTRATADO:", "2. SERVICE PROVIDER:")}
-                        </h3>
-                        <div className="space-y-1">
+                      <div className="rounded-lg border bg-slate-50 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-3">CONTRATADO</h3>
+                        <div className="space-y-1.5 text-sm">
                           <p>
-                            <span className="font-semibold">Nome/Razão Social:</span> {contratoAtual.contratado.nome}
+                            <span className="font-medium">Nome:</span> {contratoAtual.contratado.nome}
                           </p>
                           <p>
-                            <span className="font-semibold">CPF/CNPJ:</span> {contratoAtual.contratado.cpfCnpj}
+                            <span className="font-medium">CPF/CNPJ:</span> {contratoAtual.contratado.cpfCnpj}
                           </p>
                           {contratoAtual.contratado.endereco && (
                             <p>
-                              <span className="font-semibold">Endereço:</span> {contratoAtual.contratado.endereco}
+                              <span className="font-medium">Endereço:</span> {contratoAtual.contratado.endereco}
                             </p>
                           )}
                           {contratoAtual.contratado.telefone && (
                             <p>
-                              <span className="font-semibold">Telefone:</span>{" "}
+                              <span className="font-medium">Telefone:</span>{" "}
                               {formatarTelefone(contratoAtual.contratado.telefone)}
                             </p>
                           )}
                           {contratoAtual.contratado.email && (
                             <p>
-                              <span className="font-semibold">E-mail:</span> {contratoAtual.contratado.email}
+                              <span className="font-medium">E-mail:</span> {contratoAtual.contratado.email}
                             </p>
                           )}
                         </div>
                       </div>
-
-                      <p className="text-base">
-                        Resolvem celebrar o presente contrato, mediante as seguintes cláusulas e condições:
-                      </p>
                     </div>
 
-                    <div className="border-t pt-6">
-                      <h3 className="font-bold text-lg mb-4 text-blue-700">CLÁUSULA 1ª - DO OBJETO</h3>
-                      <div className="bg-blue-50 p-4 rounded-md mb-4 border">
-                        <p className="text-justify">{contratoAtual.objeto}</p>
+                    <div className="space-y-6 text-justify leading-relaxed text-sm">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULA 1ª - DO OBJETO</h3>
+                        <div className="rounded-lg border bg-white p-5">
+                          <p>{contratoAtual.objeto}</p>
+                        </div>
                       </div>
-                    </div>
 
-                    {contratoAtual.valor > 0 && (
-                      <div className="border-t pt-6">
-                        <h3 className="font-bold text-lg mb-4 text-blue-700">
-                          {traduzirContrato(
-                            "CLÁUSULA 2ª - DO VALOR E FORMA DE PAGAMENTO",
-                            "CLAUSE 2 - VALUE AND PAYMENT METHOD",
-                          )}
-                        </h3>
-                        <p className="mb-2">
-                          <strong>2.1 -</strong>{" "}
-                          {traduzirContrato(
-                            "O valor total dos serviços contratados é de",
-                            "The total value of contracted services is",
-                          )}{" "}
-                          <span className="font-bold text-green-600">{formatarMoedaContrato(contratoAtual.valor)}</span>
-                          .
-                        </p>
-                        {contratoAtual.formaPagamento && (
-                          <p>
-                            <strong>2.2 -</strong> {traduzirContrato("Forma de pagamento:", "Payment method:")}{" "}
-                            {contratoAtual.formaPagamento === "total-antes"
-                              ? traduzirContrato(
-                                  "100% do valor total antes do início do serviço",
-                                  "100% of total value before service starts",
-                                )
-                              : contratoAtual.formaPagamento === "total-depois"
-                                ? traduzirContrato(
-                                    "100% do valor total após a conclusão do serviço",
-                                    "100% of total value after service completion",
-                                  )
-                                : contratoAtual.formaPagamento === "50-50"
-                                  ? traduzirContrato(
-                                      "50% antes do início e 50% após a conclusão do serviço",
-                                      "50% before start and 50% after completion",
-                                    )
-                                  : contratoAtual.formaPagamento === "personalizado"
-                                    ? traduzirContrato(
-                                        "Conforme especificado nas cláusulas contratuais",
-                                        "As specified in contract clauses",
-                                      )
-                                    : contratoAtual.formaPagamento}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      {contratoAtual.valor > 0 && (
+                        <div>
+                          <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULA 2ª - DO VALOR E PAGAMENTO</h3>
+                          <div className="rounded-lg border bg-white p-5 space-y-1.5">
+                            <p>
+                              Valor total:{" "}
+                              <span className="font-bold">{formatarMoedaContrato(contratoAtual.valor)}</span>
+                            </p>
+                            <p>Forma de pagamento: {contratoAtual.formaPagamento}</p>
+                          </div>
+                        </div>
+                      )}
 
-                    {contratoAtual.prazoExecucao && (
-                      <div className="border-t pt-6">
-                        <h3 className="font-bold text-lg mb-4 text-blue-700">CLÁUSULA 3ª - DO PRAZO</h3>
-                        <p>
-                          <strong>3.1 -</strong> O prazo para execução dos serviços é de{" "}
-                          <strong>{contratoAtual.prazoExecucao}</strong>, contado a partir da assinatura do presente
-                          contrato.
-                        </p>
-                      </div>
-                    )}
+                      {contratoAtual.prazoExecucao && (
+                        <div>
+                          <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULA 3ª - DO PRAZO</h3>
+                          <div className="rounded-lg border bg-white p-5">
+                            <p>Prazo de execução: {contratoAtual.prazoExecucao}</p>
+                          </div>
+                        </div>
+                      )}
 
-                    {contratoAtual.clausulas.length > 0 && (
-                      <div className="border-t pt-6">
-                        <h3 className="font-bold text-lg mb-4 text-blue-700">CLÁUSULAS ESPECÍFICAS</h3>
-                        <div className="space-y-4">
-                          {contratoAtual.clausulas.map((clausula, index) => (
-                            <div key={index} className="bg-gray-50 p-4 rounded-md border-l-4 border-yellow-400">
-                              <p className="text-justify">
-                                <strong>CLÁUSULA {index + 4}ª -</strong> {clausula}
-                              </p>
+                      {contratoAtual.clausulas.length > 0 && (
+                        <div>
+                          <h3 className="text-base font-bold text-slate-800 mb-2">CLÁUSULAS ESPECÍFICAS</h3>
+                          <div className="rounded-lg border bg-white p-5">
+                            <ul className="list-disc pl-5 space-y-2">
+                              {contratoAtual.clausulas.map((clausula, index) => (
+                                <li key={index}>{clausula}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pt-8 mt-8 border-t">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                          <div className="text-center">
+                            <div className="h-20 flex items-end justify-center">
+                              {configuracoes.assinaturaContratado ? (
+                                <img
+                                  src={configuracoes.assinaturaContratado}
+                                  alt="Assinatura do Contratado"
+                                  className="max-h-20 object-contain"
+                                />
+                              ) : (
+                                <div className="text-slate-400 italic mb-2">{contratoAtual.contratado.nome}</div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                            <div className="border-t border-slate-300 pt-2">
+                              <p className="font-bold">{contratoAtual.contratado.nome}</p>
+                              <p className="text-xs text-slate-500">CONTRATADO</p>
+                            </div>
+                          </div>
 
-                    <div className="border-t pt-6">
-                      <h3 className="font-bold text-lg mb-4 text-blue-700">CLÁUSULA FINAL - DISPOSIÇÕES GERAIS</h3>
-                      <div className="space-y-2">
-                        <p>
-                          <strong>1.</strong> Este contrato é regido pelas leis brasileiras.
-                        </p>
-                        <p>
-                          <strong>2.</strong> Qualquer alteração deve ser formalizada por escrito.
-                        </p>
-                        <p>
-                          <strong>3.</strong> Fica eleito o foro da comarca de domicílio do CONTRATANTE para dirimir
-                          quaisquer questões oriundas do presente contrato.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-16 pt-8 border-t-2 border-gray-300">
-                      <p className="text-center mb-8 text-base">
-                        E por estarem assim justos e contratados, firmam o presente contrato em duas vias de igual teor
-                        e forma, na presença das testemunhas abaixo assinadas.
-                      </p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-16">
-                        <div className="text-center">
-                          <div className="h-20 flex items-end justify-center mb-2">
-                            {contratoAtual.clientSignature ? (
-                              <img
-                                src={contratoAtual.clientSignature}
-                                alt="Assinatura do Contratante"
-                                className="max-h-20 w-auto object-contain"
-                              />
-                            ) : (
-                              <div className="text-gray-400 text-sm italic mb-2">Aguardando assinatura...</div>
-                            )}
-                          </div>
-                          <div className="border-t-2 border-gray-400 pt-3 mx-4">
-                            <p className="font-bold text-base">{contratoAtual.contratante.nome}</p>
-                            <p className="text-xs text-gray-600 uppercase tracking-wide">CONTRATANTE</p>
-                            <p className="text-xs text-gray-500">CPF/CNPJ: {contratoAtual.contratante.cpfCnpj}</p>
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="h-20 flex items-end justify-center mb-2">
-                            {configuracoes.assinaturaContratado ? (
-                              <img
-                                src={configuracoes.assinaturaContratado}
-                                alt="Assinatura do Contratado"
-                                className="max-h-20 w-auto object-contain"
-                              />
-                            ) : (
-                              <p className="font-serif text-2xl italic text-gray-600">{contratoAtual.contratado.nome}</p>
-                            )}
-                          </div>
-                          <div className="border-t-2 border-gray-400 pt-3 mx-4">
-                            <p className="font-bold text-base">{contratoAtual.contratado.nome}</p>
-                            <p className="text-xs text-gray-600 uppercase tracking-wide">CONTRATADO</p>
-                            <p className="text-xs text-gray-500">CPF/CNPJ: {contratoAtual.contratado.cpfCnpj}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-12">
-                        <div className="text-center">
-                          <div className="border-t border-gray-300 pt-2 mx-8">
-                            <p className="text-xs text-gray-600 uppercase">TESTEMUNHA 1</p>
-                            <p className="text-xs text-gray-500">Nome: _______________________</p>
-                            <p className="text-xs text-gray-500">CPF: ________________________</p>
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="border-t border-gray-300 pt-2 mx-8">
-                            <p className="text-xs text-gray-600 uppercase">TESTEMUNHA 2</p>
-                            <p className="text-xs text-gray-500">Nome: _______________________</p>
-                            <p className="text-xs text-gray-500">CPF: ________________________</p>
+                          <div className="text-center">
+                            <div className="h-20 flex items-end justify-center">
+                              {contratoAtual.clientSignature ? (
+                                <img
+                                  src={contratoAtual.clientSignature}
+                                  alt="Assinatura do Contratante"
+                                  className="max-h-20 object-contain"
+                                />
+                              ) : (
+                                <div className="text-slate-400 italic mb-2">Aguardando assinatura...</div>
+                              )}
+                            </div>
+                            <div className="border-t border-slate-300 pt-2">
+                              <p className="font-bold">{contratoAtual.contratante.nome}</p>
+                              <p className="text-xs text-slate-500">CONTRATANTE</p>
+                              {contratoAtual.clientSignedAt && (
+                                <p className="text-[11px] text-slate-400 mt-1">
+                                  Assinado em {new Date(contratoAtual.clientSignedAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="text-xs text-gray-500 border-t pt-6 mt-12 text-center bg-gray-50 p-4 rounded">
-                    <p className="font-semibold">{configuracoes.nomeEmpresa}</p>
-                    <p>WhatsApp: {configuracoes.whatsapp}</p>
-                    <p className="mt-2 text-gray-400">Documento gerado eletronicamente</p>
+                    <div className="mt-10 text-center text-xs text-slate-500 border-t pt-4">
+                      <div className="font-medium">{configuracoes.nomeEmpresa}</div>
+                      {configuracoes.whatsapp && <div>WhatsApp: {configuracoes.whatsapp}</div>}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2783,46 +2764,44 @@ export default function OrcamentoPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filtrarContratos()
-                            .slice(0, 5)
-                            .map((contrato) => (
-                              <TableRow key={contrato.id}>
-                                <TableCell className="font-medium">{contrato.numero}</TableCell>
-                                <TableCell>{contrato.contratante.nome}</TableCell>
-                                <TableCell>{contrato.contratado.nome}</TableCell>
-                                <TableCell>{contrato.data}</TableCell>
-                                <TableCell>{contrato.valor > 0 ? formatarMoeda(contrato.valor) : "-"}</TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => copyContractLink(contrato.id)}
-                                      title="Copiar Link de Assinatura"
-                                    >
-                                      <Link className="h-4 w-4 text-green-600" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        setContratoAtual(contrato)
-                                        setContratoGerado(true)
-                                      }}
-                                    >
-                                      <Eye className="h-4 w-4 text-blue-500" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => removerContratoHistorico(contrato.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4 text-red-500" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                          {filtrarContratos().map((contrato) => (
+                            <TableRow key={contrato.id}>
+                              <TableCell className="font-medium">{contrato.numero}</TableCell>
+                              <TableCell>{contrato.contratante.nome}</TableCell>
+                              <TableCell>{contrato.contratado.nome}</TableCell>
+                              <TableCell>{contrato.data}</TableCell>
+                              <TableCell>{contrato.valor > 0 ? formatarMoeda(contrato.valor) : "-"}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => copyContractLink(contrato.id)}
+                                    title="Copiar Link de Assinatura"
+                                  >
+                                    <Link className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setContratoAtual(contrato)
+                                      setContratoGerado(true)
+                                    }}
+                                  >
+                                    <Eye className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removerContratoHistorico(contrato.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
                         </TableBody>
                       </Table>
                     </div>
@@ -2831,6 +2810,133 @@ export default function OrcamentoPage() {
               </Card>
             )}
           </div>
+        )
+
+      case "historico-contratos":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Histórico de Contratos</CardTitle>
+              <CardDescription>Visualize e gerencie todos os contratos já gerados</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center border rounded-md px-3 py-2">
+                  <Search className="h-5 w-5 text-muted-foreground mr-2" />
+                  <Input
+                    placeholder="Buscar por número, contratante, contratado ou valor..."
+                    className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    value={filtroHistoricoContratos}
+                    onChange={(e) => setFiltroHistoricoContratos(e.target.value)}
+                  />
+                </div>
+
+                {filtrarHistoricoContratos().length > 0 ? (
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nº</TableHead>
+                          <TableHead>Contratante</TableHead>
+                          <TableHead>Contratado</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Valor</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filtrarHistoricoContratos().map((contrato) => (
+                          <TableRow key={contrato.id}>
+                            <TableCell className="font-medium">{contrato.numero}</TableCell>
+                            <TableCell>{contrato.contratante.nome}</TableCell>
+                            <TableCell>{contrato.contratado.nome}</TableCell>
+                            <TableCell>{contrato.data}</TableCell>
+                            <TableCell>
+                              {contrato.valor > 0 ? formatarMoeda(contrato.valor) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => copyContractLink(contrato.id)}
+                                  title="Copiar Link de Assinatura"
+                                >
+                                  <Link className="h-4 w-4 text-green-600" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => marcarContratoPago(contrato)}
+                                  title="Marcar como pago (adicionar na carteira Principal)"
+                                >
+                                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setContratoAtual(contrato)
+                                    setContratoGerado(true)
+                                    setActiveTab("contratos")
+                                  }}
+                                  title="Visualizar contrato"
+                                >
+                                  <Eye className="h-4 w-4 text-blue-500" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removerContratoHistorico(contrato.id)}
+                                  title="Excluir contrato"
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 border rounded-md bg-muted/20">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="bg-primary/10 p-3 rounded-full">
+                        <Calendar className="h-6 w-6 text-primary" />
+                      </div>
+                      <h3 className="font-medium text-lg">Nenhum contrato encontrado</h3>
+                      <p className="text-muted-foreground max-w-md">
+                        {historicoContratos.length === 0
+                          ? "Você ainda não gerou nenhum contrato. Gere seu primeiro contrato na aba 'Contratos'."
+                          : "Nenhum contrato corresponde aos critérios de busca. Tente outros termos."}
+                      </p>
+                      {historicoContratos.length > 0 && filtroHistoricoContratos && (
+                        <Button
+                          variant="outline"
+                          onClick={() => setFiltroHistoricoContratos("")}
+                          className="mt-2"
+                        >
+                          Limpar Filtro
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    {historicoContratos.length > 0 && (
+                      <>
+                        Total:{" "}
+                        <span className="font-medium">{filtrarHistoricoContratos().length}</span> contrato(s)
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         )
 
       case "historico":
