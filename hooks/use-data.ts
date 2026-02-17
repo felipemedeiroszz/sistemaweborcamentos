@@ -157,8 +157,11 @@ export function useData() {
   }
 
   const saveContract = async (contract: any) => {
-     // Map frontend camelCase to snake_case
-    const dbContract = {
+    const now = new Date()
+    const dbDate = now.toISOString().slice(0, 10)
+    const dbTime = now.toTimeString().slice(0, 8)
+
+    const dbContract: any = {
       id: contract.id,
       number: contract.numero,
       title: contract.titulo,
@@ -169,35 +172,75 @@ export function useData() {
       execution_term: contract.prazoExecucao,
       payment_method: contract.formaPagamento,
       clauses: contract.clausulas,
-      date: contract.data,
-      time: contract.hora,
-      currency: contract.moeda || 'BRL',
-      language: contract.idioma || 'pt',
+      date: dbDate,
+      time: dbTime,
+      currency: contract.moeda || "BRL",
+      language: contract.idioma || "pt",
       client_signature: contract.clientSignature,
       client_signed_at: contract.clientSignedAt,
-      status: contract.status
+      status: contract.status,
     }
 
-    const { data, error } = await supabase.from('contracts').upsert(dbContract).select().single()
-    if (error) throw error
-    return {
-      id: data.id,
-      numero: data.number,
-      titulo: data.title,
-      contratante: data.contractor_data,
-      contratado: data.hired_data,
-      objeto: data.object,
-      valor: data.value,
-      prazoExecucao: data.execution_term,
-      formaPagamento: data.payment_method,
-      clausulas: data.clauses,
-      data: data.date,
-      hora: data.time,
-      moeda: data.currency,
-      idioma: data.language,
-      clientSignature: data.client_signature,
-      clientSignedAt: data.client_signed_at,
-      status: data.status
+    try {
+      const { data, error } = await supabase.from("contracts").upsert(dbContract).select().single()
+      if (error) throw error
+      return {
+        id: data.id,
+        numero: data.number,
+        titulo: data.title,
+        contratante: data.contractor_data,
+        contratado: data.hired_data,
+        objeto: data.object,
+        valor: data.value,
+        prazoExecucao: data.execution_term,
+        formaPagamento: data.payment_method,
+        clausulas: data.clauses,
+        data: data.date,
+        hora: data.time,
+        moeda: data.currency,
+        idioma: data.language,
+        clientSignature: data.client_signature,
+        clientSignedAt: data.client_signed_at,
+        status: data.status,
+      }
+    } catch (error) {
+      const legacyContract: any = { ...dbContract }
+      delete legacyContract.client_signature
+      delete legacyContract.client_signed_at
+      delete legacyContract.status
+
+      try {
+        const { data, error: fallbackError } = await supabase
+          .from("contracts")
+          .upsert(legacyContract)
+          .select()
+          .single()
+
+        if (fallbackError) throw fallbackError
+
+        return {
+          id: data.id,
+          numero: data.number,
+          titulo: data.title,
+          contratante: data.contractor_data,
+          contratado: data.hired_data,
+          objeto: data.object,
+          valor: data.value,
+          prazoExecucao: data.execution_term,
+          formaPagamento: data.payment_method,
+          clausulas: data.clauses,
+          data: data.date,
+          hora: data.time,
+          moeda: data.currency,
+          idioma: data.language,
+          clientSignature: data.client_signature,
+          clientSignedAt: data.client_signed_at,
+          status: data.status,
+        }
+      } catch (fallbackError) {
+        console.error("Erro ao salvar contrato (fallback):", fallbackError)
+        throw fallbackError
+      }
     }
   }
 
