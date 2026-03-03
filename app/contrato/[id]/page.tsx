@@ -265,7 +265,14 @@ export default function ContratoPage() {
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="bg-white rounded-xl shadow border overflow-hidden" id="contrato-publico">
+        <div className="bg-white rounded-xl shadow border overflow-hidden relative" id="contrato-publico">
+          {contrato.paidAt && (
+            <img
+              src="/pago.png"
+              alt="Pago"
+              className="pointer-events-none absolute right-6 top-24 w-40 opacity-80 rotate-12"
+            />
+          )}
           <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center gap-4">
               {settings?.logo ? (

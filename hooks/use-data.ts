@@ -152,7 +152,8 @@ export function useData() {
       idioma: contract.language,
       clientSignature: contract.client_signature,
       clientSignedAt: contract.client_signed_at,
-      status: contract.status
+      status: contract.status,
+      paidAt: contract.paid_at
     }))
   }
 
@@ -179,6 +180,7 @@ export function useData() {
       client_signature: contract.clientSignature,
       client_signed_at: contract.clientSignedAt,
       status: contract.status,
+      paid_at: contract.paidAt,
     }
 
     try {
@@ -202,12 +204,14 @@ export function useData() {
         clientSignature: data.client_signature,
         clientSignedAt: data.client_signed_at,
         status: data.status,
+        paidAt: data.paid_at,
       }
     } catch (error) {
       const legacyContract: any = { ...dbContract }
       delete legacyContract.client_signature
       delete legacyContract.client_signed_at
       delete legacyContract.status
+      delete legacyContract.paid_at
 
       try {
         const { data, error: fallbackError } = await supabase
@@ -236,6 +240,7 @@ export function useData() {
           clientSignature: data.client_signature,
           clientSignedAt: data.client_signed_at,
           status: data.status,
+          paidAt: data.paid_at,
         }
       } catch (fallbackError) {
         console.error("Erro ao salvar contrato (fallback):", fallbackError)
@@ -269,7 +274,8 @@ export function useData() {
       idioma: data.language,
       clientSignature: data.client_signature,
       clientSignedAt: data.client_signed_at,
-      status: data.status
+      status: data.status,
+      paidAt: data.paid_at
     }
   }
 
@@ -280,6 +286,15 @@ export function useData() {
       status: 'signed'
     }).eq('id', id)
     
+    if (error) throw error
+  }
+
+  const markContractPaid = async (id: string) => {
+    const { error } = await supabase
+      .from('contracts')
+      .update({ paid_at: new Date().toISOString() })
+      .eq('id', id)
+
     if (error) throw error
   }
 
@@ -342,7 +357,11 @@ export function useData() {
   }
 
   const saveAccount = async (name: string) => {
-    const { data, error } = await supabase.from('wallet_accounts').insert({ name }).select().single()
+    const { data, error } = await supabase
+      .from('wallet_accounts')
+      .upsert({ name }, { onConflict: 'name' })
+      .select()
+      .single()
     if (error) throw error
     return data.name
   }
@@ -436,6 +455,7 @@ export function useData() {
     deleteContract,
     getContractById,
     signContract,
+    markContractPaid,
     fetchTransactions,
     saveTransaction,
     deleteTransaction,

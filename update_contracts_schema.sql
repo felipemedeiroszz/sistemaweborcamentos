@@ -2,3 +2,4 @@
 alter table contracts add column if not exists client_signature text;
 alter table contracts add column if not exists client_signed_at timestamp with time zone;
 alter table contracts add column if not exists status text default 'draft'; -- draft, sent, signed
+alter table contracts add column if not exists paid_at timestamp with time zone;

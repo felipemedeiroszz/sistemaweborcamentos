@@ -108,6 +108,7 @@ interface Contrato {
   clientSignature?: string
   clientSignedAt?: string
   status?: string
+  paidAt?: string
 }
 
 interface ClienteCadastro {
@@ -138,7 +139,7 @@ export default function OrcamentoPage() {
     fetchProducts, saveProduct, deleteProduct,
     fetchClients, saveClient, deleteClient,
     fetchBudgets, saveBudget, deleteBudget,
-    fetchContracts, saveContract, deleteContract,
+    fetchContracts, saveContract, deleteContract, markContractPaid,
     fetchTransactions, saveTransaction, deleteTransaction,
     fetchAccounts, saveAccount, deleteAccount,
     fetchSettings, saveSettings,
@@ -323,8 +324,20 @@ export default function OrcamentoPage() {
         if (budgets && budgets.length > 0) setHistorico(budgets)
         if (contracts && contracts.length > 0) setHistoricoContratos(contracts)
         if (settings) setConfiguracoes(settings)
-        if (accounts && accounts.length > 0) setContas(accounts)
+        if (accounts) {
+          const contasNormalizadas = accounts.includes("Principal") ? accounts : ["Principal", ...accounts]
+          setContas(contasNormalizadas.length > 0 ? contasNormalizadas : ["Principal"])
+          if (!contasNormalizadas.includes(contaSelecionada)) {
+            setContaSelecionada(contasNormalizadas[0] || "Principal")
+          }
+        }
         if (transactions && transactions.length > 0) setMovimentacoes(transactions)
+
+        try {
+          await saveAccount("Principal")
+        } catch (error) {
+          console.error("Erro ao garantir conta Principal:", error)
+        }
 
         // Adicionar um item vazio se não houver nenhum
         if (itens.length === 0) {
@@ -397,10 +410,9 @@ export default function OrcamentoPage() {
     }
 
     try {
-      await saveTransaction(movimentacao)
-      
-      const novasMovimentacoes = [movimentacao, ...movimentacoes]
-      setMovimentacoes(novasMovimentacoes)
+      await saveAccount(contaSelecionada)
+      const saved = await saveTransaction(movimentacao)
+      setMovimentacoes((prev) => [saved, ...prev])
       
       // Limpar formulário
       setNovaMovimentacao({
@@ -1150,7 +1162,7 @@ export default function OrcamentoPage() {
     setActiveTab("orcamento")
   }
 
-  const salvarConfiguracoes = async (novasConfiguracoes) => {
+  const salvarConfiguracoes = async (novasConfiguracoes: typeof configuracoes) => {
     try {
       await saveSettings(novasConfiguracoes)
       setConfiguracoes(novasConfiguracoes)
@@ -1379,14 +1391,59 @@ export default function OrcamentoPage() {
     }
   }
 
+  const getErrorMessage = (error: unknown) => {
+    if (typeof error === "string") return error
+    if (error && typeof error === "object" && "message" in error && typeof (error as any).message === "string") {
+      return (error as any).message
+    }
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return "Erro desconhecido"
+    }
+  }
+
   const marcarContratoPago = async (contrato: Contrato) => {
     try {
       const titulo = contrato.titulo && contrato.titulo.trim().length > 0 ? contrato.titulo : `Contrato Nº ${contrato.numero}`
+      const chavePagamento = `ID:${contrato.id}`
+      const jaRegistradoNaCarteira = movimentacoes.some(
+        (mov) =>
+          mov.formaPagamento === "contrato" &&
+          typeof mov.observacao === "string" &&
+          mov.observacao.includes(chavePagamento),
+      )
+
+      if (contrato.paidAt && jaRegistradoNaCarteira) {
+        toast({
+          title: "Pagamento já registrado",
+          description: "Este contrato já está pago e já está registrado na carteira.",
+        })
+        return
+      }
+
+      let carimboAtualizado = false
+      const paidAt = contrato.paidAt || new Date().toISOString()
+
+      if (!contrato.paidAt) {
+        try {
+          await markContractPaid(contrato.id)
+          carimboAtualizado = true
+          setHistoricoContratos((prev) => prev.map((c) => (c.id === contrato.id ? { ...c, paidAt } : c)))
+          setContratoAtual((prev) => (prev.id === contrato.id ? { ...prev, paidAt } : prev))
+          setContratoSelecionado((prev) => (prev && prev.id === contrato.id ? { ...prev, paidAt } : prev))
+        } catch (error) {
+          console.error("Erro ao marcar contrato como pago:", error)
+        }
+      } else {
+        carimboAtualizado = true
+      }
+
       const movimentacao = {
         id: crypto.randomUUID(),
         tipo: "entrada" as "entrada" | "saida",
         titulo: `Pagamento - ${titulo}`,
-        observacao: `Pagamento do contrato ${contrato.numero} - ${contrato.contratante.nome}`,
+        observacao: `Pagamento do contrato ${contrato.numero} - ${contrato.contratante.nome} (${chavePagamento})`,
         data: new Date().toISOString(),
         valor: contrato.valor > 0 ? contrato.valor : 0,
         formaPagamento: "contrato",
@@ -1394,19 +1451,30 @@ export default function OrcamentoPage() {
         moeda: (contrato.moeda as "BRL" | "USD") || "BRL",
         conta: "Principal",
       }
-      
-      const saved = await saveTransaction(movimentacao)
-      setMovimentacoes([saved, ...movimentacoes])
-      
-      toast({
-        title: "Pagamento registrado",
-        description: `Entrada adicionada na carteira Principal: ${titulo} - ${formatarMoeda(movimentacao.valor)}`,
-      })
+
+      try {
+        await saveAccount("Principal")
+        const saved = await saveTransaction(movimentacao)
+        setMovimentacoes((prev) => [saved, ...prev])
+        toast({
+          title: "Pagamento registrado",
+          description: `Entrada adicionada na carteira Principal: ${titulo} - ${formatarMoeda(movimentacao.valor)}${carimboAtualizado ? "" : " (carimbo de pago não pôde ser atualizado)"}`,
+        })
+      } catch (error) {
+        console.error("Erro ao registrar pagamento na carteira:", error)
+        toast({
+          title: carimboAtualizado ? "Contrato marcado como pago" : "Erro",
+          description: carimboAtualizado
+            ? `Contrato marcado como pago, mas não foi possível registrar na carteira: ${getErrorMessage(error)}`
+            : `Não foi possível marcar como pago: ${getErrorMessage(error)}`,
+          variant: "destructive",
+        })
+      }
     } catch (error) {
       console.error("Erro ao marcar como pago:", error)
       toast({
         title: "Erro",
-        description: "Não foi possível registrar o pagamento na carteira.",
+        description: `Não foi possível marcar como pago: ${getErrorMessage(error)}`,
         variant: "destructive",
       })
     }
@@ -2535,9 +2603,16 @@ export default function OrcamentoPage() {
 
                 <div
                   id="contrato-pdf"
-                  className="bg-white rounded-xl border shadow-sm print:shadow-none print:border-none max-w-4xl mx-auto overflow-hidden"
+                  className="bg-white rounded-xl border shadow-sm print:shadow-none print:border-none max-w-4xl mx-auto overflow-hidden relative"
                   style={{ fontFamily: "Times New Roman, serif" }}
                 >
+                  {contratoAtual.paidAt && (
+                    <img
+                      src="/pago.png"
+                      alt="Pago"
+                      className="pointer-events-none absolute right-6 top-24 w-40 opacity-80 rotate-12"
+                    />
+                  )}
                   <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-slate-50 to-white">
                     <div className="flex items-center gap-4">
                       {configuracoes.logo ? (
@@ -2856,6 +2931,11 @@ export default function OrcamentoPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
+                                {contrato.paidAt && (
+                                  <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium mr-1">
+                                    Pago
+                                  </span>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -2868,9 +2948,18 @@ export default function OrcamentoPage() {
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => marcarContratoPago(contrato)}
-                                  title="Marcar como pago (adicionar na carteira Principal)"
+                                  disabled={!!contrato.paidAt}
+                                  title={
+                                    contrato.paidAt
+                                      ? "Pago"
+                                      : "Marcar como pago (adicionar na carteira Principal)"
+                                  }
                                 >
-                                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                                  <DollarSign
+                                    className={`h-4 w-4 ${
+                                      contrato.paidAt ? "text-slate-400" : "text-emerald-600"
+                                    }`}
+                                  />
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -3685,8 +3774,8 @@ export default function OrcamentoPage() {
                                 <span className="text-muted-foreground">Saldo:</span>
                                 <span
                                   className={`font-semibold ${
-                                    detalheConta?.saldo >= 0 ? "text-green-600" : "text-red-600"
-                                  }}`}
+                                    (detalheConta?.saldo ?? 0) >= 0 ? "text-green-600" : "text-red-600"
+                                  }`}
                                 >
                                   {formatarValor(detalheConta?.saldo || 0, moedaSelecionada)}
                                 </span>
