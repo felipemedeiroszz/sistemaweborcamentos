@@ -211,6 +211,8 @@ export default function OrcamentoPage() {
     "DOS TESTES E HOMOLOGAÇÃO: Todos os sistemas desenvolvidos passarão por testes unitários, de integração e de aceitação. O CONTRATANTE terá prazo de 7 (sete) dias úteis para homologação de cada entrega, sendo o silêncio considerado como aprovação tácita.",
 
     "DA DOCUMENTAÇÃO TÉCNICA: O CONTRATADO fornecerá documentação técnica completa incluindo manual do usuário, manual técnico, diagramas de arquitetura, dicionário de dados e instruções de instalação e configuração dos sistemas desenvolvidos.",
+
+    "DA INADIMPLÊNCIA: Em caso de inadimplência por período superior a 5 dias após o vencimento, o CONTRATADO poderá, mediante aviso prévio de 48 horas, suspender parcial ou totalmente os serviços prestados, incluindo suporte técnico, manutenção, integrações e demais funcionalidades sob sua responsabilidade. Caso o CONTRATADO seja responsável pela hospedagem, infraestrutura ou gerenciamento técnico do sistema, poderá ainda suspender o acesso ao sistema até a regularização dos pagamentos pendentes. O restabelecimento dos serviços ocorrerá após a confirmação do pagamento, podendo levar até 48 horas. O CONTRATANTE declara estar ciente de que a suspensão poderá impactar o funcionamento do sistema, não cabendo ao CONTRATADO qualquer responsabilidade por prejuízos decorrentes da inadimplência.",
   ])
 
   // Canvas refs e states para assinatura
@@ -2848,6 +2850,11 @@ export default function OrcamentoPage() {
                               <TableCell>{contrato.valor > 0 ? formatarMoeda(contrato.valor) : "-"}</TableCell>
                               <TableCell className="text-right">
                                 <div className="flex justify-end gap-1">
+                                  {!contrato.clientSignature && (
+                                    <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium mr-1">
+                                      Aguardando Assinatura
+                                    </span>
+                                  )}
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -2934,6 +2941,11 @@ export default function OrcamentoPage() {
                                 {contrato.paidAt && (
                                   <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium mr-1">
                                     Pago
+                                  </span>
+                                )}
+                                {!contrato.clientSignature && (
+                                  <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium mr-1">
+                                    Aguardando Assinatura
                                   </span>
                                 )}
                                 <Button
