@@ -125,6 +125,7 @@ export default function OrcamentoPage() {
   const [itens, setItens] = useState<Item[]>([])
   const [itensSalvos, setItensSalvos] = useState<Item[]>([])
   const [itemSelecionado, setItemSelecionado] = useState<string>("")
+  const [showEditItensSalvos, setShowEditItensSalvos] = useState<boolean>(false)
   const [orcamentoGerado, setOrcamentoGerado] = useState<boolean>(false)
   const [numeroOrcamento, setNumeroOrcamento] = useState<string>("")
   const [dataOrcamento, setDataOrcamento] = useState<string>("")
@@ -991,6 +992,55 @@ export default function OrcamentoPage() {
     }
   }
 
+  const adicionarItemSalvoVazio = () => {
+    setItensSalvos([...itensSalvos, { id: crypto.randomUUID(), descricao: "", valor: 0 }])
+  }
+
+  const atualizarItemSalvo = (id: string, campo: keyof Item, valor: string | number) => {
+    setItensSalvos(itensSalvos.map((item) => (item.id === id ? { ...item, [campo]: valor } : item)))
+  }
+
+  const salvarItemSalvo = async (item: Item) => {
+    if (!item.descricao || item.valor <= 0) {
+      toast({
+        title: "Erro ao salvar item",
+        description: "Preencha a descrição e valor antes de salvar!",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const savedProduct = await saveProduct(item)
+      
+      let novoItensSalvos = [...itensSalvos]
+      const index = novoItensSalvos.findIndex(i => i.id === savedProduct.id)
+      
+      if (index >= 0) {
+        novoItensSalvos[index] = savedProduct
+        toast({
+          title: "Item atualizado",
+          description: "O item foi atualizado com sucesso.",
+        })
+      } else {
+        novoItensSalvos.push(savedProduct)
+        toast({
+          title: "Item salvo",
+          description: "Item adicionado à lista de itens salvos.",
+        })
+      }
+      
+      setItensSalvos(novoItensSalvos)
+    } catch (error) {
+      console.error("Erro ao salvar item:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar o item.",
+        variant: "destructive"
+      })
+    }
+  }
+
   const removerItemSalvo = async (id: string) => {
     try {
       await deleteProduct(id)
@@ -1643,54 +1693,57 @@ export default function OrcamentoPage() {
     switch (activeTab) {
       case "orcamento":
         return (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {/* Opções de Moeda e Idioma */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{traduzir("Configurações do Orçamento", "Budget Settings")}</CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div className="space-y-1">
+                  <CardTitle className="text-2xl">{traduzir("Configurações do Orçamento", "Budget Settings")}</CardTitle>
+                  <CardDescription>{traduzir("Personalize o idioma e moeda do seu orçamento", "Customize the language and currency of your budget")}</CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label>{traduzir("Moeda", "Currency")}</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid gap-3">
+                    <Label className="text-sm font-medium text-gray-700">{traduzir("Moeda", "Currency")}</Label>
                     <Select value={moedaOrcamento} onValueChange={(value: "BRL" | "USD") => setMoedaOrcamento(value)}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-11">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="BRL">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">🇧🇷</span>
-                            Real (BRL)
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">🇧🇷</span>
+                            <span>Real (BRL)</span>
                           </div>
                         </SelectItem>
                         <SelectItem value="USD">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">🇺🇸</span>
-                            Dollar (USD)
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">🇺🇸</span>
+                            <span>Dollar (USD)</span>
                           </div>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
-                  <div className="grid gap-2">
-                    <Label>{traduzir("Idioma", "Language")}</Label>
+                  <div className="grid gap-3">
+                    <Label className="text-sm font-medium text-gray-700">{traduzir("Idioma", "Language")}</Label>
                     <Select value={idiomaOrcamento} onValueChange={(value: "pt" | "en") => setIdiomaOrcamento(value)}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-11">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pt">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">🇧🇷</span>
-                            Português
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">🇧🇷</span>
+                            <span>Português</span>
                           </div>
                         </SelectItem>
                         <SelectItem value="en">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">🇺🇸</span>
-                            English
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">🇺🇸</span>
+                            <span>English</span>
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -1699,27 +1752,47 @@ export default function OrcamentoPage() {
                 </div>
 
                 {moedaOrcamento === "USD" && (
-                  <div className="mt-4 p-3 bg-blue-50 rounded-md border border-blue-200">
-                    <p className="text-sm text-blue-700">
-                      {traduzir(
-                        `Cotação atual: 1 USD = ${formatarValor(cotacaoUSD, "BRL")}`,
-                        `Current rate: 1 USD = ${formatarValor(cotacaoUSD, "BRL")}`,
-                      )}
-                    </p>
+                  <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-100 p-2 rounded-full">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-blue-800">{traduzir("Cotação USD", "USD Exchange Rate")}</p>
+                        <p className="text-sm text-blue-600 mt-1">
+                          {traduzir(
+                            `1 USD = ${formatarValor(cotacaoUSD, "BRL")}`,
+                            `1 USD = ${formatarValor(cotacaoUSD, "BRL")}`,
+                          )}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{traduzir("Dados do Cliente", "Client Information")}</CardTitle>
+            <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-2">
+              <Card className="shadow-sm hover:shadow-md transition-shadow">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-100 p-2 rounded-full">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">{traduzir("Dados do Cliente", "Client Information")}</CardTitle>
+                      <CardDescription>{traduzir("Selecione ou cadastre um cliente", "Select or register a client")}</CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label>Selecionar Cliente Cadastrado</Label>
+                <CardContent className="pt-4">
+                  <div className="grid gap-5">
+                    <div className="grid gap-3">
+                      <Label className="text-sm font-medium text-gray-700">{traduzir("Cliente Cadastrado", "Registered Client")}</Label>
                       <Select
                         onValueChange={(value) => {
                           const clienteSelecionado = clientes.find((c) => c.id === value)
@@ -1728,8 +1801,8 @@ export default function OrcamentoPage() {
                           }
                         }}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um cliente..." />
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder={traduzir("Selecione um cliente...", "Select a client...")} />
                         </SelectTrigger>
                         <SelectContent>
                           {clientes.map((c) => (
@@ -1740,19 +1813,25 @@ export default function OrcamentoPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="nome">{traduzir("Nome", "Name")}</Label>
+
+                    <div className="h-px bg-gray-200 my-1"></div>
+
+                    <div className="grid gap-3">
+                      <Label htmlFor="nome" className="text-sm font-medium text-gray-700">{traduzir("Nome", "Name")}</Label>
                       <Input
                         id="nome"
-                        placeholder={traduzir("Nome do cliente", "Client name")}
+                        className="h-11"
+                        placeholder={traduzir("Nome completo do cliente", "Client full name")}
                         value={cliente.nome}
                         onChange={(e) => setCliente({ ...cliente, nome: e.target.value })}
                       />
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="telefone">{traduzir("Telefone", "Phone")}</Label>
+
+                    <div className="grid gap-3">
+                      <Label htmlFor="telefone" className="text-sm font-medium text-gray-700">{traduzir("Telefone", "Phone")}</Label>
                       <Input
                         id="telefone"
+                        className="h-11"
                         placeholder={idiomaOrcamento === "pt" ? "(00) 00000-0000" : "+1 (000) 000-0000"}
                         value={cliente.telefone}
                         onChange={(e) => setCliente({ ...cliente, telefone: e.target.value })}
@@ -1762,116 +1841,217 @@ export default function OrcamentoPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>{traduzir("Itens Salvos", "Saved Items")}</CardTitle>
+              <Card className="shadow-sm hover:shadow-md transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-green-100 p-2 rounded-full">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">{traduzir("Itens Salvos", "Saved Items")}</CardTitle>
+                      <CardDescription>{traduzir("Gerencie seus itens predefinidos", "Manage your predefined items")}</CardDescription>
+                    </div>
+                  </div>
+                  <Button onClick={() => setShowEditItensSalvos(!showEditItensSalvos)} size="sm" variant="secondary" className="h-10 gap-2">
+                    {showEditItensSalvos ? (
+                      <>
+                        <X className="h-4 w-4" />
+                        {traduzir("Fechar Edição", "Close Edit")}
+                      </>
+                    ) : (
+                      <>
+                        <Settings className="h-4 w-4" />
+                        {traduzir("Editar Itens Salvos", "Edit Saved Items")}
+                      </>
+                    )}
+                  </Button>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4">
-                    <div className="flex gap-2">
-                      <Select value={itemSelecionado} onValueChange={setItemSelecionado}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={traduzir("Selecione um item salvo...", "Select a saved item...")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {itensSalvos.map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {item.descricao} - {formatarMoedaOrcamento(item.valor)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button onClick={adicionarItemSalvo} disabled={!itemSelecionado} variant="secondary">
-                        {traduzir("Usar", "Use")}
-                      </Button>
+                <CardContent className="pt-4">
+                  <div className="grid gap-5">
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="flex gap-2">
+                        <Select value={itemSelecionado} onValueChange={setItemSelecionado} className="flex-1">
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder={traduzir("Selecione um item...", "Select an item...")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {itensSalvos.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.descricao} - {formatarMoedaOrcamento(item.valor)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button onClick={adicionarItemSalvo} disabled={!itemSelecionado} className="h-11 gap-2 bg-blue-600 hover:bg-blue-700">
+                          {traduzir("Usar", "Use")}
+                        </Button>
+                      </div>
                     </div>
 
-                    <div className="border rounded-md">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{traduzir("Descrição", "Description")}</TableHead>
-                            <TableHead>{traduzir("Valor", "Value")}</TableHead>
-                            <TableHead className="w-[100px]">{traduzir("Ações", "Actions")}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {itensSalvos.length > 0 ? (
-                            itensSalvos.map((item) => (
-                              <TableRow key={item.id}>
-                                <TableCell>{item.descricao}</TableCell>
-                                <TableCell>{formatarMoedaOrcamento(item.valor)}</TableCell>
-                                <TableCell>
-                                  <Button variant="ghost" size="icon" onClick={() => removerItemSalvo(item.id)}>
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                  </Button>
+                    {showEditItensSalvos && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                          <h4 className="font-medium text-gray-800">{traduzir("Itens Salvos", "Saved Items")}</h4>
+                          <Button onClick={adicionarItemSalvoVazio} size="sm" variant="outline" className="h-8 gap-1">
+                            <Plus className="h-3 w-3" />
+                            {traduzir("Adicionar Item", "Add Item")}
+                          </Button>
+                        </div>
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow>
+                              <TableHead className="w-[55%]">{traduzir("Descrição", "Description")}</TableHead>
+                              <TableHead>{traduzir("Valor", "Value")}</TableHead>
+                              <TableHead className="w-[120px] text-right">{traduzir("Ações", "Actions")}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {itensSalvos.length > 0 ? (
+                              itensSalvos.map((item) => (
+                                <TableRow key={item.id} className="hover:bg-gray-50">
+                                  <TableCell className="py-3">
+                                    <Input
+                                      className="h-9 text-sm"
+                                      placeholder={traduzir("Descrição", "Description")}
+                                      value={item.descricao}
+                                      onChange={(e) => atualizarItemSalvo(item.id, "descricao", e.target.value)}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-3">
+                                    <Input
+                                      type="number"
+                                      className="h-9 text-sm"
+                                      placeholder="0,00"
+                                      value={item.valor || ""}
+                                      onChange={(e) => atualizarItemSalvo(item.id, "valor", Number.parseFloat(e.target.value) || 0)}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-3 text-right">
+                                    <div className="flex justify-end gap-1">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8"
+                                              onClick={() => salvarItemSalvo(item)}
+                                              disabled={!item.descricao || item.valor <= 0}
+                                            >
+                                              <Save className="h-4 w-4 text-green-600" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>{traduzir("Salvar", "Save")}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8"
+                                              onClick={() => removerItemSalvo(item.id)}
+                                            >
+                                              <Trash2 className="h-4 w-4 text-red-500" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>{traduzir("Remover", "Remove")}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            ) : (
+                              <TableRow>
+                                <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
+                                  <div className="flex flex-col items-center gap-2">
+                                    <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                    </svg>
+                                    <p>{traduzir("Nenhum item salvo ainda", "No saved items yet")}</p>
+                                  </div>
                                 </TableCell>
                               </TableRow>
-                            ))
-                          ) : (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
-                                {traduzir("Nenhum item salvo", "No saved items")}
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>{traduzir("Itens do Orçamento", "Budget Items")}</CardTitle>
-                <Button onClick={adicionarItem} size="sm" variant="outline">
-                  <Plus className="mr-2 h-4 w-4" /> {traduzir("Adicionar Item", "Add Item")}
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div className="flex items-center gap-3">
+                  <div className="bg-purple-100 p-2 rounded-full">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">{traduzir("Itens do Orçamento", "Budget Items")}</CardTitle>
+                    <CardDescription>{traduzir("Adicione e edite os itens do seu orçamento", "Add and edit your budget items")}</CardDescription>
+                  </div>
+                </div>
+                <Button onClick={adicionarItem} size="sm" variant="secondary" className="h-10 gap-2">
+                  <Plus className="h-4 w-4" /> 
+                  {traduzir("Adicionar Item", "Add Item")}
                 </Button>
               </CardHeader>
-              <CardContent>
-                <div className="border rounded-md">
+              <CardContent className="pt-4">
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-gray-50">
                       <TableRow>
-                        <TableHead className="w-[60%]">{traduzir("Descrição", "Description")}</TableHead>
-                        <TableHead>
-                          {traduzir("Valor", "Value")} ({moedaOrcamento})
-                        </TableHead>
-                        <TableHead className="w-[150px]">{traduzir("Ações", "Actions")}</TableHead>
+                        <TableHead className="w-[55%]">{traduzir("Descrição", "Description")}</TableHead>
+                        <TableHead>{traduzir("Valor", "Value")} ({moedaOrcamento})</TableHead>
+                        <TableHead className="w-[120px] text-right">{traduzir("Ações", "Actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {itens.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>
+                        <TableRow key={item.id} className="hover:bg-gray-50">
+                          <TableCell className="py-3">
                             <Input
+                              className="h-9 text-sm"
                               placeholder={traduzir("Descrição do item", "Item description")}
                               value={item.descricao}
                               onChange={(e) => atualizarItem(item.id, "descricao", e.target.value)}
                             />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-3">
                             <Input
                               type="number"
+                              className="h-9 text-sm"
                               placeholder="0,00"
                               value={item.valor || ""}
                               onChange={(e) => atualizarItem(item.id, "valor", Number.parseFloat(e.target.value) || 0)}
                             />
                           </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
+                          <TableCell className="py-3 text-right">
+                            <div className="flex justify-end gap-1">
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
                                       variant="ghost"
                                       size="icon"
+                                      className="h-8 w-8"
                                       onClick={() => salvarItem(item)}
                                       disabled={!item.descricao || item.valor <= 0}
                                     >
-                                      <Save className="h-4 w-4 text-green-500" />
+                                      <Save className="h-4 w-4 text-green-600" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
@@ -1886,6 +2066,7 @@ export default function OrcamentoPage() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
+                                      className="h-8 w-8"
                                       onClick={() => removerItem(item.id)}
                                       disabled={itens.length === 1}
                                     >
@@ -1905,17 +2086,22 @@ export default function OrcamentoPage() {
                   </Table>
                 </div>
 
-                <div className="mt-6 flex flex-col items-end">
-                  <div className="bg-muted p-4 rounded-md w-full md:w-1/3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-lg">{traduzir("Total:", "Total:")}</span>
-                      <span className="text-xl font-bold text-blue-600">{formatarMoedaOrcamento(calcularTotal())}</span>
+                <div className="mt-8 flex flex-col items-end gap-6">
+                  <div className="w-full md:w-1/3">
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-semibold text-gray-700">{traduzir("Total do Orçamento", "Budget Total")}</span>
+                        <span className="text-3xl font-bold text-blue-700">{formatarMoedaOrcamento(calcularTotal())}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mt-6 flex gap-4">
-                    <Button variant="outline" onClick={limparFormulario}>
-                      {traduzir("Limpar", "Clear")}
+                  <div className="flex gap-4 w-full md:w-auto">
+                    <Button variant="outline" onClick={limparFormulario} className="h-11 gap-2 flex-1 md:flex-none">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      {traduzir("Limpar Formulário", "Clear Form")}
                     </Button>
                     <Button
                       onClick={gerarOrcamento}
@@ -1924,7 +2110,11 @@ export default function OrcamentoPage() {
                         !cliente.telefone ||
                         itens.filter((i) => i.descricao && i.valor > 0).length === 0
                       }
+                      className="h-11 gap-2 flex-1 md:flex-none bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                     >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                       {traduzir("Gerar Orçamento", "Generate Budget")}
                     </Button>
                   </div>
@@ -1932,10 +2122,20 @@ export default function OrcamentoPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-red-200">
+            <Card className="border-amber-200 bg-amber-50/50">
               <CardHeader>
-                <CardTitle className="text-red-600">Diagnóstico do Sistema</CardTitle>
-                <CardDescription>Use esta ferramenta se estiver enfrentando problemas para salvar dados.</CardDescription>
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-100 p-2 rounded-full">
+                    <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <CardTitle className="text-amber-700">{traduzir("Diagnóstico do Sistema", "System Diagnostics")}</CardTitle>
+                    <CardDescription className="text-amber-600">{traduzir("Use esta ferramenta se estiver enfrentando problemas", "Use this tool if you're having issues")}</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <Button
@@ -1947,7 +2147,6 @@ export default function OrcamentoPage() {
                       const testId = crypto.randomUUID()
                       console.log("Tentando inserir cliente teste:", testId)
 
-                      // 1. Insert
                       const { data: insertData, error: insertError } = await supabase
                         .from("clients")
                         .insert({
@@ -1965,7 +2164,6 @@ export default function OrcamentoPage() {
 
                       console.log("Inserção sucesso:", insertData)
 
-                      // 2. Select
                       const { data: selectData, error: selectError } = await supabase
                         .from("clients")
                         .select("*")
@@ -1977,7 +2175,6 @@ export default function OrcamentoPage() {
                         throw selectError
                       }
 
-                      // 3. Delete
                       const { error: deleteError } = await supabase.from("clients").delete().eq("id", testId)
 
                       if (deleteError) {
@@ -1996,8 +2193,12 @@ export default function OrcamentoPage() {
                       })
                     }
                   }}
+                  className="gap-2"
                 >
-                  Testar Conexão e Gravação no Banco
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                  </svg>
+                  {traduzir("Testar Conexão", "Test Connection")}
                 </Button>
               </CardContent>
             </Card>
@@ -2850,6 +3051,11 @@ export default function OrcamentoPage() {
                               <TableCell>{contrato.valor > 0 ? formatarMoeda(contrato.valor) : "-"}</TableCell>
                               <TableCell className="text-right">
                                 <div className="flex justify-end gap-1">
+                                  {contrato.clientSignature && (
+                                    <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium mr-1">
+                                      Assinado
+                                    </span>
+                                  )}
                                   {!contrato.clientSignature && (
                                     <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium mr-1">
                                       Aguardando Assinatura
@@ -2941,6 +3147,11 @@ export default function OrcamentoPage() {
                                 {contrato.paidAt && (
                                   <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium mr-1">
                                     Pago
+                                  </span>
+                                )}
+                                {contrato.clientSignature && (
+                                  <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium mr-1">
+                                    Assinado
                                   </span>
                                 )}
                                 {!contrato.clientSignature && (
