@@ -60,6 +60,7 @@ import { useData } from "@/hooks/use-data"
 import { jsPDF } from "jspdf"
 import html2canvas from "html2canvas"
 import { supabase } from "@/lib/supabase"
+import { QRCodeSVG } from "qrcode.react"
 
 interface Item {
   id: string
@@ -127,6 +128,19 @@ interface ClienteCadastro {
 }
 
 export default function OrcamentoPage() {
+  // UUID generator with fallback for environments without crypto.randomUUID
+  const generateUUID = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID()
+    }
+    // Fallback implementation (RFC4122 version 4 compliant)
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0
+      const v = c === "x" ? r : (r & 0x3 | 0x8)
+      return v.toString(16)
+    })
+  }
+
   const [cliente, setCliente] = useState<Cliente>({ nome: "", telefone: "" })
   const [itens, setItens] = useState<Item[]>([])
   const [itensSalvos, setItensSalvos] = useState<Item[]>([])
@@ -170,7 +184,7 @@ export default function OrcamentoPage() {
     payment_status: "",
     warranty: "",
     warranty_term: "",
-    portal_token: crypto.randomUUID(),
+    portal_token: generateUUID(),
     entry_signature: "",
     exit_signature: "",
   })
@@ -208,6 +222,7 @@ export default function OrcamentoPage() {
   const [osIsDrawing, setOsIsDrawing] = useState(false)
   const [osLastPosition, setOsLastPosition] = useState({ x: 0, y: 0 })
   const [osPdfRef, setOsPdfRef] = useState<HTMLDivElement | null>(null)
+  const [osReceiptRef, setOsReceiptRef] = useState<HTMLDivElement | null>(null)
 
   // OS Constants
   const STATUS_OPTIONS = [
@@ -522,7 +537,7 @@ export default function OrcamentoPage() {
     }
 
     const movimentacao = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       ...novaMovimentacao,
       conta: contaSelecionada,
       dataHora: new Date().toLocaleString("pt-BR"),
@@ -1024,7 +1039,7 @@ export default function OrcamentoPage() {
   }
 
   const adicionarItem = () => {
-    setItens([...itens, { id: crypto.randomUUID(), descricao: "", valor: 0 }])
+    setItens([...itens, { id: generateUUID(), descricao: "", valor: 0 }])
   }
 
   const adicionarItemSalvo = () => {
@@ -1032,7 +1047,7 @@ export default function OrcamentoPage() {
 
     const item = itensSalvos.find((item) => item.id === itemSelecionado)
     if (item) {
-      setItens([...itens, { ...item, id: crypto.randomUUID() }])
+      setItens([...itens, { ...item, id: generateUUID() }])
       setItemSelecionado("")
     }
   }
@@ -1043,7 +1058,7 @@ export default function OrcamentoPage() {
       setItens(itens.filter((item) => item.id !== id))
     } else {
       // Se for o último item, limpar seus valores em vez de remover
-      setItens([{ id: crypto.randomUUID(), descricao: "", valor: 0 }])
+      setItens([{ id: generateUUID(), descricao: "", valor: 0 }])
       toast({
         title: "Aviso",
         description: "É necessário manter pelo menos um item no orçamento.",
@@ -1109,7 +1124,7 @@ export default function OrcamentoPage() {
   }
 
   const adicionarItemSalvoVazio = () => {
-    setItensSalvos([...itensSalvos, { id: crypto.randomUUID(), descricao: "", valor: 0 }])
+    setItensSalvos([...itensSalvos, { id: generateUUID(), descricao: "", valor: 0 }])
   }
 
   const atualizarItemSalvo = (id: string, campo: keyof Item, valor: string | number) => {
@@ -1233,7 +1248,7 @@ export default function OrcamentoPage() {
 
     // Criar objeto de orçamento para o histórico
     const novoOrcamento: Orcamento = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       numero: novoNumeroOrcamento,
       cliente: { ...cliente },
       itens: itensValidos.map((item) => ({ ...item })),
@@ -1325,7 +1340,7 @@ export default function OrcamentoPage() {
 
   const limparFormulario = () => {
     setCliente({ nome: "", telefone: "" })
-    setItens([{ id: crypto.randomUUID(), descricao: "", valor: 0 }])
+    setItens([{ id: generateUUID(), descricao: "", valor: 0 }])
     setOrcamentoGerado(false)
     setActiveTab("orcamento")
   }
@@ -1435,7 +1450,7 @@ export default function OrcamentoPage() {
 
     const novoContrato: Contrato = {
       ...contratoAtual,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       numero: novoNumeroContrato,
       data: dataFormatada,
       hora: horaFormatada,
@@ -1608,7 +1623,7 @@ export default function OrcamentoPage() {
       }
 
       const movimentacao = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         tipo: "entrada" as "entrada" | "saida",
         titulo: `Pagamento - ${titulo}`,
         observacao: `Pagamento do contrato ${contrato.numero} - ${contrato.contratante.nome} (${chavePagamento})`,
@@ -2260,7 +2275,7 @@ export default function OrcamentoPage() {
                     try {
                       toast({ title: "Testando conexão...", description: "Iniciando teste de escrita..." })
 
-                      const testId = crypto.randomUUID()
+                      const testId = generateUUID()
                       console.log("Tentando inserir cliente teste:", testId)
 
                       const { data: insertData, error: insertError } = await supabase
@@ -4673,6 +4688,400 @@ export default function OrcamentoPage() {
                     </div>
                   )}
 
+                  {/* =================== PDF-ONLY RECEIPT (NOTA NÃO FISCAL) =================== */}
+                  {/* This clean section is what will be captured by html2canvas for the PDF */}
+                  <div 
+                    ref={(el) => { if (el) setOsReceiptRef(el) }} 
+                    className="bg-white w-full max-w-3xl mx-auto mx-auto border border-gray-800 mb-8"
+                    style={{ fontFamily: "Arial, sans-serif" }}
+                  >
+                    {/* ===== TOP HEADER: NOTA NÃO FISCAL ===== */}
+                    <div className="bg-gray-100 border-b-2 border-gray-800 p-6 text-center">
+                      <h1 className="text-2xl font-black tracking-wider text-gray-800 uppercase">
+                        Nota Não Fiscal
+                      </h1>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Comprovante de Ordem de Serviço
+                      </p>
+                    </div>
+
+                    {/* ===== COMPANY INFO ===== */}
+                    <div className="flex justify-between items-start p-6 border-b border-gray-300">
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={configuracoes.logo || "/LOGON.png"}
+                          alt="Logo da Empresa"
+                          className="h-20 w-auto object-contain"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/LOGON.png" }}
+                        />
+                        <div>
+                          <h2 className="text-xl font-bold text-gray-900">
+                            {configuracoes.nomeEmpresa || "Empresa"}
+                          </h2>
+                          {configuracoes.slogan && (
+                            <p className="text-sm text-gray-600">{configuracoes.slogan}</p>
+                          )}
+                          {configuracoes.endereco && (
+                            <p className="text-xs text-gray-600 mt-2">{configuracoes.endereco}</p>
+                          )}
+                          <div className="flex flex-wrap gap-4 mt-1 text-xs text-gray-600">
+                            {configuracoes.whatsapp && <p>📱 {configuracoes.whatsapp}</p>}
+                            {configuracoes.telefone && <p>☎️ {configuracoes.telefone}</p>}
+                            {configuracoes.email && <p>✉️ {configuracoes.email}</p>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border-2 border-gray-800 rounded px-6 py-3 text-center">
+                        <p className="text-xs text-gray-600 uppercase font-semibold">Número OS</p>
+                        <p className="text-3xl font-black text-gray-900 mt-1">
+                          {osForm.number || "-"}
+                        </p>
+                        <div className="mt-3 pt-3 border-t border-gray-300 text-xs text-gray-600 space-y-1 text-left">
+                          <p>
+                            <span className="font-semibold">Emissão:</span>{" "}
+                            {new Date().toLocaleDateString("pt-BR")}
+                          </p>
+                          {osForm.entry_date && (
+                            <p>
+                              <span className="font-semibold">Entrada:</span>{" "}
+                              {new Date(osForm.entry_date).toLocaleDateString("pt-BR")}
+                            </p>
+                          )}
+                          <p>
+                            <span className="font-semibold">Status:</span>{" "}
+                            {osForm.status || "Recebido"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ===== CLIENT DATA ===== */}
+                    <div className="p-6 border-b border-gray-300">
+                      <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-4 inline-block">
+                        Dados do Cliente
+                      </h3>
+                      {(() => {
+                        const client = clientes.find((c) => c.id === osForm.client_id)
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-8 text-sm text-gray-800">
+                            <div className="col-span-full border-b pb-1 border-gray-200">
+                              <p className="text-xs text-gray-500 uppercase font-semibold">Nome Completo / Razão Social</p>
+                              <p className="font-medium text-base">{client?.nome || "Não informado"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase font-semibold">CPF / CNPJ</p>
+                              <p className="font-medium">{client?.cpfCnpj || "Não informado"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase font-semibold">Telefone / WhatsApp</p>
+                              <p className="font-medium">{client?.telefone || "Não informado"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase font-semibold">E-mail</p>
+                              <p className="font-medium">{client?.email || "Não informado"}</p>
+                            </div>
+                            <div className="col-span-full">
+                              <p className="text-xs text-gray-500 uppercase font-semibold">Endereço</p>
+                              <p className="font-medium">{client?.endereco || "Não informado"}</p>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+
+                    {/* ===== EQUIPMENT / PRODUCTS ===== */}
+                    <div className="p-6 border-b border-gray-300">
+                      <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-4 inline-block">
+                        Equipamento(s) / Produto(s)
+                      </h3>
+                      {osEquipment.length === 0 ? (
+                        <p className="text-sm italic text-gray-500">Nenhum equipamento cadastrado.</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {osEquipment.map((eq: any, idx: number) => (
+                            <div key={eq.id} className="border border-gray-400 rounded p-4 bg-gray-50">
+                              <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-300">
+                                <h4 className="font-bold text-gray-900">Item {idx + 1}: {eq.category || "Equipamento"}</h4>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-4 text-sm">
+                                {eq.brand && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold">Marca</p>
+                                    <p className="font-medium">{eq.brand}</p>
+                                  </div>
+                                )}
+                                {eq.model && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold">Modelo</p>
+                                    <p className="font-medium">{eq.model}</p>
+                                  </div>
+                                )}
+                                {eq.serial_number && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold">Número de Série</p>
+                                    <p className="font-medium">{eq.serial_number}</p>
+                                  </div>
+                                )}
+                                {eq.imei && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold">IMEI</p>
+                                    <p className="font-medium">{eq.imei}</p>
+                                  </div>
+                                )}
+                                {eq.color && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold">Cor</p>
+                                    <p className="font-medium">{eq.color}</p>
+                                  </div>
+                                )}
+                                {eq.physical_condition && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold">Estado Físico</p>
+                                    <p className="font-medium">{eq.physical_condition}</p>
+                                  </div>
+                                )}
+                                {Array.isArray(eq.accessories) && eq.accessories.length > 0 && (
+                                  <div className="col-span-full mt-2">
+                                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Acessórios Entregues</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {eq.accessories.map((acc: string) => (
+                                        <span key={acc} className="bg-white border border-gray-300 rounded px-2 py-0.5 text-xs font-medium">
+                                          {acc}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {eq.observations && (
+                                  <div className="col-span-full mt-2">
+                                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Observações</p>
+                                    <p className="font-medium bg-white p-2 rounded border border-gray-300 text-sm">{eq.observations}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ===== SERVICE DETAILS ===== */}
+                    <div className="p-6 border-b border-gray-300 space-y-5">
+                      {osForm.customer_defect && (
+                        <div>
+                          <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-3 inline-block">
+                            Defeito Informado
+                          </h3>
+                          <div className="bg-gray-50 border border-gray-300 rounded p-3 text-sm text-gray-800 whitespace-pre-wrap">
+                            {osForm.customer_defect}
+                          </div>
+                        </div>
+                      )}
+                      {osForm.technical_diagnosis && (
+                        <div>
+                          <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-3 inline-block">
+                            Diagnóstico Técnico
+                          </h3>
+                          <div className="bg-gray-50 border border-gray-300 rounded p-3 text-sm text-gray-800 whitespace-pre-wrap">
+                            {osForm.technical_diagnosis}
+                          </div>
+                        </div>
+                      )}
+                      {osForm.service_executed && (
+                        <div>
+                          <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-3 inline-block">
+                            Serviço Executado
+                          </h3>
+                          <div className="bg-gray-50 border border-gray-300 rounded p-3 text-sm text-gray-800 whitespace-pre-wrap">
+                            {osForm.service_executed}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ===== PARTS TABLE ===== */}
+                    {osParts.length > 0 && (
+                      <div className="p-6 border-b border-gray-300">
+                        <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-4 inline-block">
+                          Peças / Materiais Aplicados
+                        </h3>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-200 border-y-2 border-gray-800">
+                              <th className="text-left px-3 py-2 font-semibold text-gray-800 uppercase text-xs">Item</th>
+                              <th className="text-center px-3 py-2 font-semibold text-gray-800 uppercase text-xs">Qtd</th>
+                              <th className="text-right px-3 py-2 font-semibold text-gray-800 uppercase text-xs">Unitário</th>
+                              <th className="text-right px-3 py-2 font-semibold text-gray-800 uppercase text-xs">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {osParts.map((part: any, idx: number) => (
+                              <tr key={part.id} className="border-b border-gray-300">
+                                <td className="px-3 py-2">{idx + 1}. {part.part_name}</td>
+                                <td className="px-3 py-2 text-center">{part.quantity}</td>
+                                <td className="px-3 py-2 text-right">{Number(part.unit_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                                <td className="px-3 py-2 text-right font-semibold">{Number(part.total_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* ===== FINANCIAL SUMMARY ===== */}
+                    <div className="p-6 border-b border-gray-300">
+                      <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-4 inline-block">
+                        Resumo Financeiro
+                      </h3>
+                      <div className="flex flex-col md:flex-row gap-6">
+                        <div className="flex-1 space-y-2.5 text-sm">
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-gray-700 font-medium">Total de Peças / Materiais</span>
+                            <span className="text-gray-900 font-semibold">
+                              {Number(osForm.parts_value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-gray-700 font-medium">Mão de Obra / Serviço</span>
+                            <span className="text-gray-900 font-semibold">
+                              {Number(osForm.labor_value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-gray-700 font-medium">Frete / Deslocamento</span>
+                            <span className="text-gray-900 font-semibold">
+                              {Number(osForm.shipping_value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          {(osForm.discount ?? 0) > 0 && (
+                            <div className="flex justify-between items-center py-1.5 border-b border-gray-200 text-red-600">
+                              <span className="font-medium">(-) Desconto Aplicado</span>
+                              <span className="font-semibold">
+                                - {Number(osForm.discount ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="md:w-64 border-4 border-gray-800 bg-gray-100 rounded-lg flex items-center justify-center p-6">
+                          <div className="text-center">
+                            <p className="text-xs uppercase text-gray-600 font-bold tracking-wide">
+                              Valor Total da OS
+                            </p>
+                            <p className="text-4xl font-black text-gray-900 mt-2 leading-tight">
+                              {Number(
+                                (osForm.parts_value ?? 0) +
+                                (osForm.labor_value ?? 0) +
+                                (osForm.shipping_value ?? 0) -
+                                (osForm.discount ?? 0)
+                              ).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </p>
+                            {osForm.payment_method && (
+                              <p className="text-sm text-gray-700 font-medium mt-3 pt-3 border-t border-gray-300">
+                                {osForm.payment_method}
+                                {osForm.installments && osForm.installments > 1 && ` • ${osForm.installments}x`}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ===== WARRANTY ===== */}
+                    {(osForm.warranty || osForm.warranty_term) && (
+                      <div className="p-6 border-b border-gray-300">
+                        <h3 className="text-sm font-bold uppercase bg-gray-800 text-white px-3 py-1.5 mb-3 inline-block">
+                          Termos de Garantia
+                        </h3>
+                        {osForm.warranty_term && (
+                          <p className="text-sm text-gray-800 mb-2">
+                            <span className="font-semibold">Prazo de Garantia: </span>
+                            {osForm.warranty_term}
+                          </p>
+                        )}
+                        {osForm.warranty && (
+                          <div className="bg-amber-50 border border-amber-300 rounded p-3 text-sm text-gray-800 whitespace-pre-wrap">
+                            {osForm.warranty}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ===== QR CODE SECTION (instead of signatures) ===== */}
+                    <div className="p-6">
+                      <div className="border-2 border-gray-800 rounded-lg bg-gray-50 p-6 flex flex-col md:flex-row items-center gap-6">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-black text-gray-900 uppercase mb-2 flex items-center gap-2">
+                            📱 Acompanhe e Assine Digitalmente
+                          </h3>
+                          <p className="text-sm text-gray-700 mb-3">
+                            Escaneie o QR Code ao lado com a câmera do seu celular para:
+                          </p>
+                          <ul className="text-sm text-gray-800 space-y-1.5 mb-4">
+                            <li className="flex items-start gap-2">
+                              <span className="text-green-600 font-bold">✓</span>
+                              <span>Acompanhar o status e todo o histórico da ordem de serviço</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-green-600 font-bold">✓</span>
+                              <span>Visualizar fotos do equipamento (entrada, reparo e saída)</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-green-600 font-bold">✓</span>
+                              <span>Assinar digitalmente o recebimento do equipamento</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-green-600 font-bold">✓</span>
+                              <span>Baixar o comprovante sempre que precisar</span>
+                            </li>
+                          </ul>
+                          {currentOsId && osForm.portal_token && (
+                            <div className="bg-white border border-gray-300 rounded p-3 break-all text-xs text-blue-700 font-mono">
+                              {typeof window !== 'undefined' ? window.location.origin : ''}/os/portal/{osForm.portal_token}
+                            </div>
+                          )}
+                        </div>
+                        {currentOsId && osForm.portal_token && (
+                          <div className="flex flex-col items-center">
+                            <div className="bg-white p-3 border-4 border-gray-800 rounded-lg shadow-md">
+                              <QRCodeSVG
+                                value={
+                                  typeof window !== 'undefined'
+                                    ? `${window.location.origin}/os/portal/${osForm.portal_token}`
+                                    : `/os/portal/${osForm.portal_token}`
+                                }
+                                size={180}
+                                level="H"
+                                includeMargin={true}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-600 mt-3 text-center max-w-[210px] font-medium">
+                              Aponte a câmera do celular para o QR Code
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ===== FOOTER ===== */}
+                    <div className="bg-gray-800 text-white p-4 text-center text-xs text-gray-300">
+                      <p className="font-semibold text-white mb-1">
+                        {configuracoes.nomeEmpresa || "Empresa"}
+                      </p>
+                      <p>
+                        Documento gerado eletronicamente em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR")}
+                      </p>
+                    </div>
+                  </div>
+                  {/* =================== END PDF-ONLY RECEIPT =================== */}
+
+                  {/* PREVIEW CARD: shown in UI so user can see the receipt before generating PDF */}
+                  <div className="mb-8 text-center">
+                    <div className="inline-flex items-center gap-2 text-sm text-gray-500 bg-gray-100 rounded-full px-4 py-2 border border-gray-200">
+                      <FileText className="h-4 w-4 text-blue-600" />
+                      <span>Prévia do comprovante que será gerado em PDF</span>
+                    </div>
+                  </div>
+
                   <Tabs value={osActiveTab} onValueChange={setOsActiveTab} className="w-full">
                     <TabsList className="mb-6">
                       <TabsTrigger value="info">Informações</TabsTrigger>
@@ -5454,7 +5863,7 @@ export default function OrcamentoPage() {
         payment_status: "",
         warranty: "",
         warranty_term: "",
-        portal_token: crypto.randomUUID(),
+        portal_token: generateUUID(),
         entry_signature: "",
         exit_signature: "",
       }
@@ -5806,7 +6215,7 @@ export default function OrcamentoPage() {
   }
 
   const generateOsPdf = async () => {
-    const element = osPdfRef
+    const element = osReceiptRef
     if (!element) return
     try {
       toast({ title: "Gerando PDF..." })
@@ -5867,7 +6276,7 @@ export default function OrcamentoPage() {
       payment_status: "",
       warranty: "",
       warranty_term: "",
-      portal_token: crypto.randomUUID(),
+      portal_token: generateUUID(),
       entry_signature: "",
       exit_signature: "",
     })

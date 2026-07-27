@@ -1,30 +1,18 @@
-# Melhorar o site
+remova  a frase NOTA NÃO FISCAL.
+ Deixe apenas comprovante de ordem de serviço 
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/contatolfinfosjb-2908s-projects/v0-melhorar-o-site)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/HQxLOABZxAM)
 
-## Overview
+a Prévia do comprovante sera em uma aba separada , apos historico.    
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
 
-## Deployment
 
-Your project is live at:
+ja tem o botão gerar pdf,  precisa ter o botão imprimir tambem .   
 
-**[https://vercel.com/contatolfinfosjb-2908s-projects/v0-melhorar-o-site](https://vercel.com/contatolfinfosjb-2908s-projects/v0-melhorar-o-site)**
 
-## Build your app
+a impressão podera ser configurada para imprimir em impressora normal em folha a4 e em impressoras termicas 50mm, 80mm, 110mm , 120mm.
 
-Continue building your app on:
 
-**[https://v0.app/chat/projects/HQxLOABZxAM](https://v0.app/chat/projects/HQxLOABZxAM)**
+o layout do comprovante devera ser perfeito em cada tamanho.
 
-## How It Works
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
