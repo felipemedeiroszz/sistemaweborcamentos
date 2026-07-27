@@ -424,6 +424,132 @@ export function useData() {
     }
   }
 
+  // Service Orders
+  const fetchServiceOrders = async () => {
+    const { data, error } = await supabase.from('service_orders').select('*').order('created_at', { ascending: false })
+    if (error) throw error
+    return data
+  }
+
+  const getServiceOrderById = async (id: string) => {
+    const { data, error } = await supabase.from('service_orders').select('*').eq('id', id).single()
+    if (error) throw error
+    return data
+  }
+
+  const getServiceOrderByToken = async (token: string) => {
+    const { data, error } = await supabase.from('service_orders').select('*').eq('portal_token', token).single()
+    if (error) throw error
+    return data
+  }
+
+  const saveServiceOrder = async (order: any) => {
+    // Prepare the DB object, ensuring dates are in correct format
+    const dbOrder: any = {
+      ...order,
+      id: order.id || undefined, // If empty string, send undefined to let Postgres generate UUID
+      entry_date: order.entry_date ? new Date(order.entry_date).toISOString() : new Date().toISOString(),
+      expected_delivery_date: order.expected_delivery_date ? new Date(order.expected_delivery_date).toISOString() : null,
+    }
+    
+    // Remove id if it's falsy so upsert works for new items
+    if (!dbOrder.id) delete dbOrder.id
+
+    const { data, error } = await supabase.from('service_orders').upsert(dbOrder).select().single()
+    if (error) throw error
+    return data
+  }
+
+  const deleteServiceOrder = async (id: string) => {
+    const { error } = await supabase.from('service_orders').delete().eq('id', id)
+    if (error) throw error
+  }
+
+  // Service Equipment
+  const fetchServiceEquipment = async (orderId: string) => {
+    const { data, error } = await supabase.from('service_equipment').select('*').eq('service_order_id', orderId)
+    if (error) throw error
+    return data
+  }
+
+  const saveServiceEquipment = async (equipment: any) => {
+    const { data, error } = await supabase.from('service_equipment').upsert(equipment).select().single()
+    if (error) throw error
+    return data
+  }
+
+  const deleteServiceEquipment = async (id: string) => {
+    const { error } = await supabase.from('service_equipment').delete().eq('id', id)
+    if (error) throw error
+  }
+
+  // Service Parts
+  const fetchServiceParts = async (orderId: string) => {
+    const { data, error } = await supabase.from('service_parts').select('*').eq('service_order_id', orderId)
+    if (error) throw error
+    return data
+  }
+
+  const saveServicePart = async (part: any) => {
+    const { data, error } = await supabase.from('service_parts').upsert(part).select().single()
+    if (error) throw error
+    return data
+  }
+
+  const deleteServicePart = async (id: string) => {
+    const { error } = await supabase.from('service_parts').delete().eq('id', id)
+    if (error) throw error
+  }
+
+  // Service Checklists
+  const fetchServiceChecklists = async (orderId: string) => {
+    const { data, error } = await supabase.from('service_checklists').select('*').eq('service_order_id', orderId)
+    if (error) throw error
+    return data
+  }
+
+  const saveServiceChecklist = async (checklist: any) => {
+    const { data, error } = await supabase.from('service_checklists').upsert(checklist).select().single()
+    if (error) throw error
+    return data
+  }
+
+  const deleteServiceChecklist = async (id: string) => {
+    const { error } = await supabase.from('service_checklists').delete().eq('id', id)
+    if (error) throw error
+  }
+
+  // Service Timeline
+  const fetchServiceTimeline = async (orderId: string) => {
+    const { data, error } = await supabase.from('service_timeline').select('*').eq('service_order_id', orderId).order('timestamp', { ascending: true })
+    if (error) throw error
+    return data
+  }
+
+  const addTimelineEntry = async (entry: any) => {
+    const { data, error } = await supabase.from('service_timeline').insert(entry).select().single()
+    if (error) throw error
+    return data
+  }
+
+  // Service Media
+  const fetchServiceMedia = async (orderId: string) => {
+    const { data, error } = await supabase.from('service_media').select('*').eq('service_order_id', orderId).order('order_index')
+    if (error) throw error
+    return data
+  }
+
+  const saveServiceMedia = async (media: any) => {
+    const { data, error } = await supabase.from('service_media').upsert(media).select().single()
+    if (error) throw error
+    return data
+  }
+
+  const deleteServiceMedia = async (id: string) => {
+    const { error } = await supabase.from('service_media').delete().eq('id', id)
+    if (error) throw error
+  }
+
   // Image Upload
   const uploadImage = async (file: File, bucket: string = 'images') => {
     const fileExt = file.name.split('.').pop()
@@ -465,6 +591,25 @@ export function useData() {
     fetchSettings,
     saveSettings,
     uploadImage,
+    fetchServiceOrders,
+    getServiceOrderById,
+    getServiceOrderByToken,
+    saveServiceOrder,
+    deleteServiceOrder,
+    fetchServiceEquipment,
+    saveServiceEquipment,
+    deleteServiceEquipment,
+    fetchServiceParts,
+    saveServicePart,
+    deleteServicePart,
+    fetchServiceChecklists,
+    saveServiceChecklist,
+    deleteServiceChecklist,
+    fetchServiceTimeline,
+    addTimelineEntry,
+    fetchServiceMedia,
+    saveServiceMedia,
+    deleteServiceMedia,
     supabase
   }
 }

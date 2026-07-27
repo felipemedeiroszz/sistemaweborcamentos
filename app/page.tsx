@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -19,6 +20,9 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Plus,
   Trash2,
@@ -48,6 +52,8 @@ import {
   Link,
   Loader2,
   CheckCircle,
+  Wrench,
+  ArrowLeft,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useData } from "@/hooks/use-data"
@@ -135,7 +141,98 @@ export default function OrcamentoPage() {
   const [orcamentoSelecionado, setOrcamentoSelecionado] = useState<Orcamento | null>(null)
   const [filtroHistorico, setFiltroHistorico] = useState<string>("")
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
+
+  // OS State
+  const [osView, setOsView] = useState<"list" | "form">("list")
+  const [osFilter, setOsFilter] = useState<string>("")
+  const [serviceOrders, setServiceOrders] = useState<any[]>([])
+  const [osLoading, setOsLoading] = useState<boolean>(true)
+  const [currentOsId, setCurrentOsId] = useState<string | null>(null)
+  const [osForm, setOsForm] = useState<any>({
+    number: "",
+    client_id: "",
+    entry_date: new Date().toISOString().split("T")[0],
+    expected_delivery_date: "",
+    technician: "",
+    priority: "Normal",
+    origin: "Loja",
+    status: "Recebido",
+    customer_defect: "",
+    technical_diagnosis: "",
+    service_executed: "",
+    parts_value: 0,
+    labor_value: 0,
+    discount: 0,
+    shipping_value: 0,
+    total_value: 0,
+    payment_method: "",
+    installments: 1,
+    payment_status: "",
+    warranty: "",
+    warranty_term: "",
+    portal_token: crypto.randomUUID(),
+    entry_signature: "",
+    exit_signature: "",
+  })
+  const [osEquipment, setOsEquipment] = useState<any[]>([])
+  const [osParts, setOsParts] = useState<any[]>([])
+  const [osChecklists, setOsChecklists] = useState<any[]>([])
+  const [osTimeline, setOsTimeline] = useState<any[]>([])
+  const [osMedia, setOsMedia] = useState<any[]>([])
+  const [osActiveTab, setOsActiveTab] = useState<string>("info")
+  const [newOsEquipment, setNewOsEquipment] = useState<any>({
+    category: "",
+    brand: "",
+    model: "",
+    serial_number: "",
+    imei: "",
+    color: "",
+    processor: "",
+    ram: "",
+    storage: "",
+    operating_system: "",
+    password: "",
+    physical_condition: "",
+    observations: "",
+    accessories: [],
+  })
+  const [newOsPart, setNewOsPart] = useState<any>({
+    part_name: "",
+    quantity: 1,
+    unit_price: 0,
+    total_price: 0,
+  })
+  const [osMediaStage, setOsMediaStage] = useState<"Entrada" | "Durante o Reparo" | "Saída">("Entrada")
+  const [osShowSignatureDialog, setOsShowSignatureDialog] = useState<"entrada" | "saida" | null>(null)
+  const [osSignatureCanvasRef, setOsSignatureCanvasRef] = useState<HTMLCanvasElement | null>(null)
+  const [osIsDrawing, setOsIsDrawing] = useState(false)
+  const [osLastPosition, setOsLastPosition] = useState({ x: 0, y: 0 })
+  const [osPdfRef, setOsPdfRef] = useState<HTMLDivElement | null>(null)
+
+  // OS Constants
+  const STATUS_OPTIONS = [
+    "Recebido", "Em análise", "Aguardando orçamento", "Orçamento enviado",
+    "Aguardando aprovação", "Aguardando peças", "Em reparo", "Em testes",
+    "Finalizado", "Pronto para retirada", "Entregue", "Cancelado", "Garantia"
+  ]
+  const PRIORITY_OPTIONS = ["Normal", "Urgente", "Emergencial"]
+  const ORIGIN_OPTIONS = ["Loja", "WhatsApp", "Site", "Telefone", "Mercado Livre", "Outro"]
+  const EQUIPMENT_CATEGORIES = [
+    "Computador Gamer", "Computador Corporativo", "Notebook", "Mini PC", "Servidor",
+    "Video Game", "Controle de Video Game", "Celular", "Tablet", "Monitor",
+    "Placa de Vídeo", "Placa-Mãe", "Fonte", "Impressora", "Outro"
+  ]
+  const ACCESSORY_OPTIONS = [
+    "Fonte", "Cabo HDMI", "Cabo de Energia", "Mouse", "Teclado", "Controle",
+    "Carregador", "Bolsa", "Case", "Cartão de Memória", "Outro"
+  ]
+  const CHECKLISTS: Record<string, string[]> = {
+    "Notebook": ["Liga", "Tela", "Touchpad", "Webcam", "USB", "HDMI", "Wi-Fi", "Bluetooth", "Som"],
+    "Video Game": ["Liga", "HDMI", "USB", "Lê Disco", "Rede", "Controle sincroniza"],
+    "Celular": ["Liga", "Touch", "Face ID", "Digital", "Microfone", "Alto Falante", "Câmeras", "Carrega", "Fotos e Vídeos"]
+  }
   const { toast } = useToast()
+  const router = useRouter()
   const { 
     fetchProducts, saveProduct, deleteProduct,
     fetchClients, saveClient, deleteClient,
@@ -144,7 +241,25 @@ export default function OrcamentoPage() {
     fetchTransactions, saveTransaction, deleteTransaction,
     fetchAccounts, saveAccount, deleteAccount,
     fetchSettings, saveSettings,
-    uploadImage 
+    uploadImage,
+    fetchServiceOrders,
+    getServiceOrderById,
+    getServiceOrderByToken,
+    saveServiceOrder,
+    deleteServiceOrder,
+    fetchServiceEquipment,
+    saveServiceEquipment,
+    deleteServiceEquipment,
+    fetchServiceParts,
+    saveServicePart,
+    deleteServicePart,
+    fetchServiceChecklists,
+    saveServiceChecklist,
+    fetchServiceTimeline,
+    addTimelineEntry,
+    fetchServiceMedia,
+    saveServiceMedia,
+    deleteServiceMedia,
   } = useData()
 
   const [configuracoes, setConfiguracoes] = useState({
@@ -297,6 +412,7 @@ export default function OrcamentoPage() {
     { id: "clientes", label: "Cadastro de Clientes", icon: Users },
     { id: "carteira", label: "Carteira", icon: Wallet },
     { id: "historico", label: "Histórico de Orçamentos", icon: History },
+    { id: "os", label: "Ordens de Serviço", icon: Wrench },
     { id: "configuracoes", label: "Configurações", icon: Settings },
   ]
 
@@ -4422,6 +4538,840 @@ export default function OrcamentoPage() {
           </div>
         )
 
+      case "os":
+        return (
+          <div className="space-y-6">
+            {osView === "list" ? (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">Ordens de Serviço</h2>
+                  <Button onClick={openNewOs}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nova Ordem de Serviço
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 border rounded-md px-3 py-2">
+                  <Search className="h-5 w-5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar ordens de serviço..."
+                    value={osFilter}
+                    onChange={(e) => setOsFilter(e.target.value)}
+                    className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                </div>
+                {osLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : serviceOrders.length === 0 ? (
+                  <div className="text-center py-12 border rounded-md bg-muted/20">
+                    <Wrench className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium text-lg">Nenhuma ordem de serviço encontrada</h3>
+                    <p className="text-muted-foreground">Crie sua primeira ordem de serviço!</p>
+                  </div>
+                ) : (
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Número</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Prioridade</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {serviceOrders
+                          .filter((order) => 
+                            order.number?.toLowerCase().includes(osFilter.toLowerCase()) ||
+                            clientes.find((c) => c.id === order.client_id)?.nome?.toLowerCase().includes(osFilter.toLowerCase())
+                          )
+                          .map((order) => {
+                            const client = clientes.find((c) => c.id === order.client_id)
+                            return (
+                              <TableRow key={order.id}>
+                                <TableCell className="font-medium">{order.number}</TableCell>
+                                <TableCell>{client?.nome || "N/A"}</TableCell>
+                                <TableCell>{order.entry_date ? new Date(order.entry_date).toLocaleDateString("pt-BR") : "N/A"}</TableCell>
+                                <TableCell>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    order.status === "Finalizado" || order.status === "Entregue" ? "bg-green-100 text-green-700" :
+                                    order.status === "Cancelado" ? "bg-red-100 text-red-700" :
+                                    "bg-yellow-100 text-yellow-700"
+                                  }`}>
+                                    {order.status}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    order.priority === "Emergencial" ? "bg-red-100 text-red-700" :
+                                    order.priority === "Urgente" ? "bg-orange-100 text-orange-700" :
+                                    "bg-blue-100 text-blue-700"
+                                  }`}>
+                                    {order.priority}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-1">
+                                    <Button variant="ghost" size="icon" onClick={() => openOs(order.id)}>
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteOs(order.id)}>
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div id="os-pdf" ref={(el) => { if (el) setOsPdfRef(el) }} className="max-w-7xl mx-auto">
+                  <div className="flex items-center gap-4 mb-6">
+                    <Button variant="outline" onClick={() => setOsView("list")}>
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Voltar
+                    </Button>
+                    <div className="flex-1">
+                      <h2 className="text-2xl font-bold">
+                        {currentOsId ? `Ordem de Serviço ${osForm.number}` : "Nova Ordem de Serviço"}
+                      </h2>
+                    </div>
+                    {currentOsId && (
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={generateOsPdf}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          Gerar PDF
+                        </Button>
+                      </div>
+                    )}
+                    <Button onClick={handleSaveOs} disabled={osLoading}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {osLoading ? "Salvando..." : "Salvar"}
+                    </Button>
+                  </div>
+
+                  {currentOsId && (
+                    <div className="mb-6 flex gap-2 flex-wrap">
+                      {STATUS_OPTIONS.map(status => (
+                        <Button
+                          key={status}
+                          variant={osForm.status === status ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleOsStatusChange(status)}
+                        >
+                          {status}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+
+                  <Tabs value={osActiveTab} onValueChange={setOsActiveTab} className="w-full">
+                    <TabsList className="mb-6">
+                      <TabsTrigger value="info">Informações</TabsTrigger>
+                      <TabsTrigger value="equipment">Equipamentos</TabsTrigger>
+                      <TabsTrigger value="parts">Peças</TabsTrigger>
+                      <TabsTrigger value="checklist">Checklist</TabsTrigger>
+                      <TabsTrigger value="media">Mídia</TabsTrigger>
+                      <TabsTrigger value="timeline">Histórico</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="info">
+                      <div className="grid gap-6">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Dados Básicos</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              <div>
+                                <Label>Número OS</Label>
+                                <Input value={osForm.number} disabled placeholder="Gerado automaticamente" />
+                              </div>
+                              <div>
+                                <Label>Cliente *</Label>
+                                <Select value={osForm.client_id} onValueChange={(v) => setOsForm(prev => ({ ...prev, client_id: v }))}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Selecione um cliente" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {clientes.map((client) => (
+                                      <SelectItem key={client.id} value={client.id}>
+                                        {client.nome}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label>Data de Entrada</Label>
+                                <Input 
+                                  type="date" 
+                                  value={osForm.entry_date ? osForm.entry_date.split("T")[0] : ""} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, entry_date: e.target.value }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Previsão de Entrega</Label>
+                                <Input 
+                                  type="date" 
+                                  value={osForm.expected_delivery_date ? osForm.expected_delivery_date.split("T")[0] : ""} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, expected_delivery_date: e.target.value }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Técnico Responsável</Label>
+                                <Input 
+                                  value={osForm.technician} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, technician: e.target.value }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Prioridade</Label>
+                                <Select value={osForm.priority} onValueChange={(v) => setOsForm(prev => ({ ...prev, priority: v }))}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {PRIORITY_OPTIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label>Origem</Label>
+                                <Select value={osForm.origin} onValueChange={(v) => setOsForm(prev => ({ ...prev, origin: v }))}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {ORIGIN_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Descrição do Serviço</CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div>
+                              <Label>Defeito Informado pelo Cliente</Label>
+                              <Textarea 
+                                value={osForm.customer_defect ?? ""} 
+                                onChange={(e) => setOsForm(prev => ({ ...prev, customer_defect: e.target.value }))}
+                                rows={4}
+                              />
+                            </div>
+                            <div>
+                              <Label>Diagnóstico Técnico</Label>
+                              <Textarea 
+                                value={osForm.technical_diagnosis ?? ""} 
+                                onChange={(e) => setOsForm(prev => ({ ...prev, technical_diagnosis: e.target.value }))}
+                                rows={4}
+                              />
+                            </div>
+                            <div>
+                              <Label>Serviço Executado</Label>
+                              <Textarea 
+                                value={osForm.service_executed ?? ""} 
+                                onChange={(e) => setOsForm(prev => ({ ...prev, service_executed: e.target.value }))}
+                                rows={4}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Valores</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              <div>
+                                <Label>Valor das Peças</Label>
+                                <Input 
+                                  type="number" 
+                                  value={osForm.parts_value ?? 0} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, parts_value: parseFloat(e.target.value) || 0 }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Valor da Mão de Obra</Label>
+                                <Input 
+                                  type="number" 
+                                  value={osForm.labor_value ?? 0} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, labor_value: parseFloat(e.target.value) || 0 }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Desconto</Label>
+                                <Input 
+                                  type="number" 
+                                  value={osForm.discount ?? 0} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Frete</Label>
+                                <Input 
+                                  type="number" 
+                                  value={osForm.shipping_value ?? 0} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, shipping_value: parseFloat(e.target.value) || 0 }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Valor Total</Label>
+                                <Input value={(osForm.parts_value ?? 0) + (osForm.labor_value ?? 0) + (osForm.shipping_value ?? 0) - (osForm.discount ?? 0)} disabled />
+                              </div>
+                              <div>
+                                <Label>Forma de Pagamento</Label>
+                                <Input 
+                                  value={osForm.payment_method ?? ""} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, payment_method: e.target.value }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Parcelas</Label>
+                                <Input 
+                                  type="number" 
+                                  value={osForm.installments ?? 1} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, installments: parseInt(e.target.value) || 1 }))} 
+                                />
+                              </div>
+                              <div>
+                                <Label>Status do Pagamento</Label>
+                                <Input 
+                                  value={osForm.payment_status ?? ""} 
+                                  onChange={(e) => setOsForm(prev => ({ ...prev, payment_status: e.target.value }))} 
+                                />
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Garantia</CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div>
+                              <Label>Garantia</Label>
+                              <Textarea 
+                                value={osForm.warranty ?? ""} 
+                                onChange={(e) => setOsForm(prev => ({ ...prev, warranty: e.target.value }))}
+                                rows={3}
+                              />
+                            </div>
+                            <div>
+                              <Label>Prazo da Garantia</Label>
+                              <Input 
+                                value={osForm.warranty_term ?? ""} 
+                                onChange={(e) => setOsForm(prev => ({ ...prev, warranty_term: e.target.value }))} 
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        {currentOsId && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Assinaturas</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="text-center">
+                                  <h4 className="font-medium mb-2">Assinatura de Entrada</h4>
+                                  {osForm.entry_signature ? (
+                                    <img src={osForm.entry_signature} alt="Assinatura de entrada" className="mx-auto h-32 border rounded" />
+                                  ) : (
+                                    <div className="h-32 border rounded flex items-center justify-center text-gray-400">
+                                      Sem assinatura
+                                    </div>
+                                  )}
+                                  <Button 
+                                    variant="outline" 
+                                    className="mt-2"
+                                    onClick={() => {
+                                      setOsShowSignatureDialog("entrada")
+                                      setTimeout(() => {
+                                        initOsSignatureCanvas()
+                                      }, 100)
+                                    }}
+                                  >
+                                    {osForm.entry_signature ? "Reassinar" : "Assinar"}
+                                  </Button>
+                                </div>
+                                <div className="text-center">
+                                  <h4 className="font-medium mb-2">Assinatura de Saída</h4>
+                                  {osForm.exit_signature ? (
+                                    <img src={osForm.exit_signature} alt="Assinatura de saída" className="mx-auto h-32 border rounded" />
+                                  ) : (
+                                    <div className="h-32 border rounded flex items-center justify-center text-gray-400">
+                                      Sem assinatura
+                                    </div>
+                                  )}
+                                  <Button 
+                                    variant="outline" 
+                                    className="mt-2"
+                                    onClick={() => {
+                                      setOsShowSignatureDialog("saída")
+                                      setTimeout(() => {
+                                        initOsSignatureCanvas()
+                                      }, 100)
+                                    }}
+                                  >
+                                    {osForm.exit_signature ? "Reassinar" : "Assinar"}
+                                  </Button>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="equipment">
+                      <div className="grid gap-6">
+                        {currentOsId && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Adicionar Equipamento</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div>
+                                  <Label>Categoria *</Label>
+                                  <Select value={newOsEquipment.category} onValueChange={(v) => setNewOsEquipment(prev => ({ ...prev, category: v }))}>
+                                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>
+                                      {EQUIPMENT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label>Marca</Label>
+                                  <Input value={newOsEquipment.brand} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, brand: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Modelo</Label>
+                                  <Input value={newOsEquipment.model} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, model: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Número de Série</Label>
+                                  <Input value={newOsEquipment.serial_number} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, serial_number: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>IMEI</Label>
+                                  <Input value={newOsEquipment.imei} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, imei: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Cor</Label>
+                                  <Input value={newOsEquipment.color} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, color: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Processador</Label>
+                                  <Input value={newOsEquipment.processor} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, processor: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Memória RAM</Label>
+                                  <Input value={newOsEquipment.ram} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, ram: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Armazenamento</Label>
+                                  <Input value={newOsEquipment.storage} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, storage: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Sistema Operacional</Label>
+                                  <Input value={newOsEquipment.operating_system} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, operating_system: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Senha Informada</Label>
+                                  <Input type="password" value={newOsEquipment.password} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, password: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Estado Físico</Label>
+                                  <Input value={newOsEquipment.physical_condition} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, physical_condition: e.target.value }))} />
+                                </div>
+                                <div className="col-span-full">
+                                  <Label>Observações</Label>
+                                  <Textarea value={newOsEquipment.observations} onChange={(e) => setNewOsEquipment(prev => ({ ...prev, observations: e.target.value }))} />
+                                </div>
+                                <div className="col-span-full">
+                                  <Label>Acessórios Entregues</Label>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                                    {ACCESSORY_OPTIONS.map(acc => (
+                                      <div key={acc} className="flex items-center gap-2">
+                                        <Checkbox 
+                                          id={`os-acc-${acc}`}
+                                          checked={newOsEquipment.accessories.includes(acc)}
+                                          onCheckedChange={(checked) => {
+                                            setNewOsEquipment(prev => ({
+                                              ...prev,
+                                              accessories: checked 
+                                                ? [...prev.accessories, acc] 
+                                                : prev.accessories.filter(a => a !== acc)
+                                            }))
+                                          }}
+                                        />
+                                        <label htmlFor={`os-acc-${acc}`} className="text-sm">{acc}</label>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                              <Button onClick={handleAddOsEquipment}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Adicionar Equipamento
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {osEquipment.length > 0 && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Equipamentos Cadastrados</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-4">
+                                {osEquipment.map(eq => (
+                                  <div key={eq.id} className="border rounded-lg p-4">
+                                    <div className="flex justify-between items-start mb-2">
+                                      <div>
+                                        <h4 className="font-medium">{eq.category} - {eq.brand} {eq.model}</h4>
+                                        <p className="text-sm text-gray-500">Número de Série: {eq.serial_number || "N/A"}</p>
+                                      </div>
+                                      {currentOsId && (
+                                        <Button variant="destructive" size="sm" onClick={() => handleRemoveOsEquipment(eq.id)}>
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                    {eq.accessories && eq.accessories.length > 0 && (
+                                      <div className="mt-2">
+                                        <p className="text-sm font-medium">Acessórios:</p>
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          {eq.accessories.map((acc: string) => (
+                                            <span key={acc} className="px-2 py-0.5 bg-gray-100 rounded text-xs">{acc}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {eq.physical_condition && (
+                                      <p className="text-sm mt-2">Estado Físico: {eq.physical_condition}</p>
+                                    )}
+                                    {eq.observations && (
+                                      <p className="text-sm mt-1 text-gray-600">Obs: {eq.observations}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="parts">
+                      <div className="grid gap-6">
+                        {currentOsId && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Adicionar Peça</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                <div>
+                                  <Label>Peça</Label>
+                                  <Input value={newOsPart.part_name} onChange={(e) => setNewOsPart(prev => ({ ...prev, part_name: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label>Quantidade</Label>
+                                  <Input 
+                                    type="number" 
+                                    value={newOsPart.quantity} 
+                                    onChange={(e) => {
+                                      const qty = parseInt(e.target.value) || 1
+                                      setNewOsPart(prev => ({ 
+                                        ...prev, 
+                                        quantity: qty,
+                                        total_price: qty * prev.unit_price 
+                                      }))
+                                    }} 
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Valor Unitário</Label>
+                                  <Input 
+                                    type="number" 
+                                    value={newOsPart.unit_price} 
+                                    onChange={(e) => {
+                                      const price = parseFloat(e.target.value) || 0
+                                      setNewOsPart(prev => ({ 
+                                        ...prev, 
+                                        unit_price: price,
+                                        total_price: prev.quantity * price 
+                                      }))
+                                    }} 
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Valor Total</Label>
+                                  <Input value={newOsPart.total_price} disabled />
+                                </div>
+                              </div>
+                              <Button onClick={handleAddOsPart}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Adicionar Peça
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {osParts.length > 0 && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Peças Utilizadas</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Peça</TableHead>
+                                    <TableHead>Quantidade</TableHead>
+                                    <TableHead>Valor Unitário</TableHead>
+                                    <TableHead>Valor Total</TableHead>
+                                    <TableHead></TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {osParts.map(part => (
+                                    <TableRow key={part.id}>
+                                      <TableCell>{part.part_name}</TableCell>
+                                      <TableCell>{part.quantity}</TableCell>
+                                      <TableCell>{part.unit_price}</TableCell>
+                                      <TableCell>{part.total_price}</TableCell>
+                                      <TableCell>
+                                        {currentOsId && (
+                                          <Button variant="destructive" size="sm" onClick={() => handleRemoveOsPart(part.id)}>
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="checklist">
+                      <div className="grid gap-6">
+                        {!currentOsId ? (
+                          <Card>
+                            <CardContent className="pt-6 text-sm text-gray-500">
+                              Salve a OS primeiro para habilitar o checklist técnico.
+                            </CardContent>
+                          </Card>
+                        ) : osEquipment.length === 0 ? (
+                          <Card>
+                            <CardContent className="pt-6 text-sm text-gray-500">
+                              Adicione ao menos um equipamento para montar o checklist.
+                            </CardContent>
+                          </Card>
+                        ) : (
+                          osEquipment.map((equipmentItem) => {
+                            const savedChecklist = osChecklists.find(
+                              (entry) => entry.equipment_category === equipmentItem.category
+                            )
+                            const checklistItems = (savedChecklist?.items?.length
+                              ? savedChecklist.items
+                              : getOsChecklistTemplate(equipmentItem.category).map((label) => ({
+                                  label,
+                                  checked: false,
+                                }))) as Array<{ label: string; checked: boolean }>
+
+                            return (
+                              <Card key={equipmentItem.id}>
+                                <CardHeader>
+                                  <CardTitle>
+                                    Checklist: {equipmentItem.category} {equipmentItem.brand ? `- ${equipmentItem.brand}` : ""}
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {checklistItems.map((item) => (
+                                      <label key={item.label} className="flex items-center gap-3 rounded-md border p-3">
+                                        <Checkbox
+                                          checked={item.checked}
+                                          onCheckedChange={(checked) =>
+                                            handleToggleOsChecklistItem(equipmentItem, item.label, checked === true)
+                                          }
+                                        />
+                                        <span className="text-sm">{item.label}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )
+                          })
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="media">
+                      <div className="grid gap-6">
+                        {currentOsId && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Enviar Mídia</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="mb-4">
+                                <Label>Etapa</Label>
+                                <Select value={osMediaStage} onValueChange={(v: any) => setOsMediaStage(v)}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Entrada">Entrada</SelectItem>
+                                    <SelectItem value="Durante o Reparo">Durante o Reparo</SelectItem>
+                                    <SelectItem value="Saída">Saída</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div 
+                                className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50"
+                                onClick={() => {
+                                  const input = document.createElement("input")
+                                  input.type = "file"
+                                  input.accept = "image/*,video/*"
+                                  input.multiple = true
+                                  input.onchange = (e) => handleOsFileUpload((e.target as HTMLInputElement).files)
+                                  input.click()
+                                }}
+                              >
+                                <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                <p className="text-gray-600">Clique ou arraste arquivos para enviar</p>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Galeria</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {["Entrada", "Durante o Reparo", "Saída"].map(stage => {
+                              const stageMedia = osMedia.filter(m => m.stage === stage)
+                              if (stageMedia.length === 0) return null
+                              
+                              return (
+                                <div key={stage} className="mb-6">
+                                  <h4 className="font-medium mb-3">{stage}</h4>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {stageMedia.map(m => (
+                                      <div key={m.id} className="relative group">
+                                        {m.file_type === "image" ? (
+                                          <img src={m.file_url} alt={m.file_name} className="w-full h-32 object-cover rounded" />
+                                        ) : (
+                                          <video src={m.file_url} className="w-full h-32 object-cover rounded" />
+                                        )}
+                                        {currentOsId && (
+                                          <Button 
+                                            variant="destructive" 
+                                            size="sm" 
+                                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100"
+                                            onClick={() => handleRemoveOsMedia(m.id)}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="timeline">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Histórico</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {osTimeline.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">Nenhuma entrada no histórico</div>
+                          ) : (
+                            <div className="space-y-4">
+                              {osTimeline.map((entry, index) => (
+                                <div key={entry.id} className="flex gap-4">
+                                  <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
+                                  <div className="flex-1">
+                                    <p className="text-sm">{entry.action}</p>
+                                    <p className="text-xs text-gray-500">
+                                      {entry.user_name} - {new Date(entry.timestamp).toLocaleString("pt-BR")}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </div>
+            )}
+
+            {/* Signature Dialog */}
+            {osShowSignatureDialog && (
+              <Dialog open={!!osShowSignatureDialog} onOpenChange={() => setOsShowSignatureDialog(null)}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Assinatura {osShowSignatureDialog}</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col items-center">
+                    <canvas
+                      ref={(el) => setOsSignatureCanvasRef(el)}
+                      width={400}
+                      height={200}
+                      className="border rounded bg-white touch-none"
+                      onMouseDown={startOsDrawing}
+                      onMouseMove={drawOs}
+                      onMouseUp={stopOsDrawing}
+                      onMouseLeave={stopOsDrawing}
+                      onTouchStart={startOsDrawing}
+                      onTouchMove={drawOs}
+                      onTouchEnd={stopOsDrawing}
+                    />
+                  </div>
+                  <DialogFooter className="flex justify-between">
+                    <Button variant="outline" onClick={clearOsSignature}>Limpar</Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setOsShowSignatureDialog(null)}>Cancelar</Button>
+                      <Button onClick={saveOsSignature}>Salvar</Button>
+                    </div>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+        )
       default:
         return null
     }
@@ -4462,6 +5412,485 @@ export default function OrcamentoPage() {
       // Não precisamos salvar as conversões, apenas usar para exibição
     }
   }, [moedaSelecionada, cotacaoUSD, movimentacoes])
+
+  // OS Functions
+  const loadServiceOrders = async () => {
+    try {
+      setOsLoading(true)
+      const orders = await fetchServiceOrders()
+      setServiceOrders(orders)
+    } catch (error) {
+      console.error("Error loading service orders:", error)
+      toast({ title: "Erro ao carregar ordens de serviço", variant: "destructive" })
+    } finally {
+      setOsLoading(false)
+    }
+  }
+
+  const loadOsData = async (id: string) => {
+    try {
+      setOsLoading(true)
+      const order = await getServiceOrderById(id)
+      // Merge with default form values to ensure no undefined values for controlled components
+      const defaultForm = {
+        number: "",
+        client_id: "",
+        entry_date: new Date().toISOString().split("T")[0],
+        expected_delivery_date: "",
+        technician: "",
+        priority: "Normal",
+        origin: "Loja",
+        status: "Recebido",
+        customer_defect: "",
+        technical_diagnosis: "",
+        service_executed: "",
+        parts_value: 0,
+        labor_value: 0,
+        discount: 0,
+        shipping_value: 0,
+        total_value: 0,
+        payment_method: "",
+        installments: 1,
+        payment_status: "",
+        warranty: "",
+        warranty_term: "",
+        portal_token: crypto.randomUUID(),
+        entry_signature: "",
+        exit_signature: "",
+      }
+      setOsForm({ ...defaultForm, ...order })
+      const [equipment, parts, checklists, timeline, media] = await Promise.all([
+        fetchServiceEquipment(id),
+        fetchServiceParts(id),
+        fetchServiceChecklists(id),
+        fetchServiceTimeline(id),
+        fetchServiceMedia(id)
+      ])
+      setOsEquipment(equipment)
+      setOsParts(parts)
+      setOsChecklists(checklists)
+      setOsTimeline(timeline)
+      setOsMedia(media)
+    } catch (error) {
+      console.error("Error loading OS data:", error)
+      toast({ title: "Erro ao carregar ordem de serviço", variant: "destructive" })
+    } finally {
+      setOsLoading(false)
+    }
+  }
+
+  const generateOsNumber = async () => {
+    try {
+      const orders = await fetchServiceOrders()
+      return `OS-${String(orders.length + 1).padStart(6, "0")}`
+    } catch {
+      return `OS-${String(Date.now()).slice(-6)}`
+    }
+  }
+
+  const handleSaveOs = async () => {
+    if (!osForm.client_id) {
+      toast({ title: "Cliente obrigatório", variant: "destructive" })
+      return
+    }
+    try {
+      let orderNumber = osForm.number
+      if (!currentOsId && !orderNumber) {
+        orderNumber = await generateOsNumber()
+      }
+
+      // Calculate total value automatically
+      const total_value = (osForm.parts_value || 0) + (osForm.labor_value || 0) + (osForm.shipping_value || 0) - (osForm.discount || 0)
+
+      const savedOrder = await saveServiceOrder({
+        ...osForm,
+        id: currentOsId || undefined,
+        number: orderNumber,
+        total_value: total_value,
+        updated_at: new Date().toISOString()
+      })
+
+      if (!currentOsId) {
+        await addTimelineEntry({
+          service_order_id: savedOrder.id,
+          action: "Ordem de serviço criada",
+          user_name: "Sistema",
+          timestamp: new Date().toISOString()
+        })
+        setCurrentOsId(savedOrder.id)
+        setOsForm(savedOrder)
+        await loadOsData(savedOrder.id)
+      } else {
+        setOsForm(savedOrder)
+      }
+
+      await loadServiceOrders()
+      toast({ title: currentOsId ? "Ordem de serviço atualizada" : "Ordem de serviço criada" })
+    } catch (error: any) {
+      console.error("Error saving OS:", error)
+      console.error("Error details:", error?.message || JSON.stringify(error))
+      toast({ 
+        title: "Erro ao salvar ordem de serviço", 
+        description: error?.message || "Ocorreu um erro inesperado", 
+        variant: "destructive" 
+      })
+    }
+  }
+
+  const handleDeleteOs = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta ordem de serviço?")) return
+    try {
+      await deleteServiceOrder(id)
+      await loadServiceOrders()
+      if (currentOsId === id) {
+        setOsView("list")
+        setCurrentOsId(null)
+      }
+      toast({ title: "Ordem de serviço removida" })
+    } catch (error) {
+      console.error("Error deleting OS:", error)
+      toast({ title: "Erro ao remover ordem de serviço", variant: "destructive" })
+    }
+  }
+
+  const handleAddOsEquipment = async () => {
+    if (!newOsEquipment.category || !currentOsId) return
+    try {
+      const saved = await saveServiceEquipment({
+        ...newOsEquipment,
+        service_order_id: currentOsId
+      })
+      setOsEquipment([...osEquipment, saved])
+      setNewOsEquipment({
+        category: "",
+        brand: "",
+        model: "",
+        serial_number: "",
+        imei: "",
+        color: "",
+        processor: "",
+        ram: "",
+        storage: "",
+        operating_system: "",
+        password: "",
+        physical_condition: "",
+        observations: "",
+        accessories: [],
+      })
+      toast({ title: "Equipamento adicionado" })
+    } catch (error) {
+      console.error("Error adding equipment:", error)
+      toast({ title: "Erro ao adicionar equipamento", variant: "destructive" })
+    }
+  }
+
+  const handleRemoveOsEquipment = async (id: string) => {
+    try {
+      await deleteServiceEquipment(id)
+      setOsEquipment(osEquipment.filter(e => e.id !== id))
+      toast({ title: "Equipamento removido" })
+    } catch (error) {
+      console.error("Error removing equipment:", error)
+      toast({ title: "Erro ao remover equipamento", variant: "destructive" })
+    }
+  }
+
+  const handleAddOsPart = async () => {
+    if (!newOsPart.part_name || newOsPart.unit_price <= 0 || !currentOsId) return
+    const total = newOsPart.quantity * newOsPart.unit_price
+    try {
+      const saved = await saveServicePart({
+        ...newOsPart,
+        total_price: total,
+        service_order_id: currentOsId
+      })
+      setOsParts([...osParts, saved])
+      setNewOsPart({ part_name: "", quantity: 1, unit_price: 0, total_price: 0 })
+      const newPartsValue = osParts.reduce((sum, p) => sum + (p.total_price || 0), 0) + total
+      setOsForm(prev => ({ ...prev, parts_value: newPartsValue }))
+      toast({ title: "Peça adicionada" })
+    } catch (error) {
+      console.error("Error adding part:", error)
+      toast({ title: "Erro ao adicionar peça", variant: "destructive" })
+    }
+  }
+
+  const handleRemoveOsPart = async (id: string) => {
+    try {
+      await deleteServicePart(id)
+      const newParts = osParts.filter(p => p.id !== id)
+      setOsParts(newParts)
+      const newPartsValue = newParts.reduce((sum, p) => sum + (p.total_price || 0), 0)
+      setOsForm(prev => ({ ...prev, parts_value: newPartsValue }))
+      toast({ title: "Peça removida" })
+    } catch (error) {
+      console.error("Error removing part:", error)
+      toast({ title: "Erro ao remover peça", variant: "destructive" })
+    }
+  }
+
+  const getOsChecklistTemplate = (category: string) => {
+    return CHECKLISTS[category] || ["Liga", "Carrega", "Imagem", "Som", "Conectividade", "Estado físico"]
+  }
+
+  const handleToggleOsChecklistItem = async (equipmentItem: any, itemLabel: string, checked: boolean) => {
+    const existingChecklist = osChecklists.find((entry) => entry.equipment_category === equipmentItem.category)
+    const currentItems = Array.isArray(existingChecklist?.items) ? existingChecklist.items : []
+    const existingItem = currentItems.find((item: any) => item.label === itemLabel)
+    const nextItems = currentItems.length > 0
+      ? currentItems.map((item: any) => item.label === itemLabel ? { ...item, checked } : item)
+      : getOsChecklistTemplate(equipmentItem.category).map((label) => ({
+          label,
+          checked: label === itemLabel ? checked : false,
+        }))
+    if (!existingItem && currentItems.length > 0) {
+      nextItems.push({ label: itemLabel, checked })
+    }
+    try {
+      const savedChecklist = await saveServiceChecklist({
+        id: existingChecklist?.id,
+        service_order_id: currentOsId,
+        equipment_category: equipmentItem.category,
+        items: nextItems,
+      })
+      setOsChecklists((prev) => {
+        const remaining = prev.filter((entry) => entry.id !== savedChecklist.id && entry.equipment_category !== equipmentItem.category)
+        return [...remaining, savedChecklist]
+      })
+      toast({ title: "Checklist atualizado" })
+    } catch (error) {
+      console.error("Error saving checklist:", error)
+      toast({ title: "Erro ao salvar checklist", variant: "destructive" })
+    }
+  }
+
+  const handleOsFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !currentOsId) return
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      try {
+        const url = await uploadImage(file)
+        const saved = await saveServiceMedia({
+          service_order_id: currentOsId,
+          stage: osMediaStage,
+          file_url: url,
+          file_type: file.type.startsWith("image") ? "image" : "video",
+          file_name: file.name,
+          order_index: osMedia.length + i
+        })
+        setOsMedia([...osMedia, saved])
+      } catch (error) {
+        console.error("Error uploading file:", error)
+      }
+    }
+    toast({ title: "Arquivos enviados" })
+  }
+
+  const handleRemoveOsMedia = async (id: string) => {
+    try {
+      await deleteServiceMedia(id)
+      setOsMedia(osMedia.filter(m => m.id !== id))
+      toast({ title: "Arquivo removido" })
+    } catch (error) {
+      console.error("Error removing media:", error)
+      toast({ title: "Erro ao remover arquivo", variant: "destructive" })
+    }
+  }
+
+  const handleOsStatusChange = async (newStatus: string) => {
+    setOsForm(prev => ({ ...prev, status: newStatus }))
+    if (currentOsId) {
+      try {
+        const entry = await addTimelineEntry({
+          service_order_id: currentOsId,
+          action: `Status alterado para: ${newStatus}`,
+          user_name: "Usuário",
+          timestamp: new Date().toISOString()
+        })
+        setOsTimeline([...osTimeline, entry])
+      } catch (error) {
+        console.error("Error adding timeline entry:", error)
+      }
+    }
+  }
+
+  const initOsSignatureCanvas = () => {
+    const canvas = osSignatureCanvasRef
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+    ctx.strokeStyle = "#000000"
+    ctx.lineWidth = 2
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const startOsDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    const canvas = osSignatureCanvasRef
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    let x, y
+    if ("touches" in e) {
+      x = (e.touches[0].clientX - rect.left) * scaleX
+      y = (e.touches[0].clientY - rect.top) * scaleY
+    } else {
+      x = (e.clientX - rect.left) * scaleX
+      y = (e.clientY - rect.top) * scaleY
+    }
+    setOsIsDrawing(true)
+    setOsLastPosition({ x, y })
+    const ctx = canvas.getContext("2d")
+    if (ctx) {
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+    }
+  }
+
+  const drawOs = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    if (!osIsDrawing) return
+    const canvas = osSignatureCanvasRef
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    let x, y
+    if ("touches" in e) {
+      x = (e.touches[0].clientX - rect.left) * scaleX
+      y = (e.touches[0].clientY - rect.top) * scaleY
+    } else {
+      x = (e.clientX - rect.left) * scaleX
+      y = (e.clientY - rect.top) * scaleY
+    }
+    const ctx = canvas.getContext("2d")
+    if (ctx) {
+      ctx.lineTo(x, y)
+      ctx.stroke()
+    }
+    setOsLastPosition({ x, y })
+  }
+
+  const stopOsDrawing = () => {
+    setOsIsDrawing(false)
+  }
+
+  const clearOsSignature = () => {
+    const canvas = osSignatureCanvasRef
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const saveOsSignature = async () => {
+    const canvas = osSignatureCanvasRef
+    if (!canvas || !osShowSignatureDialog) return
+    const dataUrl = canvas.toDataURL("image/png")
+    const res = await fetch(dataUrl)
+    const blob = await res.blob()
+    const file = new File([blob], `signature-${osShowSignatureDialog}.png`, { type: "image/png" })
+    const url = await uploadImage(file)
+    if (osShowSignatureDialog === "entrada") {
+      setOsForm(prev => ({ ...prev, entry_signature: url }))
+    } else {
+      setOsForm(prev => ({ ...prev, exit_signature: url }))
+    }
+    setOsShowSignatureDialog(null)
+    toast({ title: "Assinatura salva" })
+  }
+
+  const generateOsPdf = async () => {
+    const element = osPdfRef
+    if (!element) return
+    try {
+      toast({ title: "Gerando PDF..." })
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      })
+      const imgData = canvas.toDataURL("image/jpeg", 0.95)
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const imgWidth = canvas.width
+      const imgHeight = canvas.height
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight)
+      pdf.addImage(
+        imgData,
+        "JPEG",
+        (pdfWidth - imgWidth * ratio) / 2,
+        8,
+        imgWidth * ratio,
+        imgHeight * ratio
+      )
+      pdf.save(`${osForm.number || "ordem-servico"}.pdf`)
+      toast({ title: "PDF gerado com sucesso" })
+    } catch (error) {
+      console.error("Error generating PDF:", error)
+      toast({ title: "Erro ao gerar PDF", variant: "destructive" })
+    }
+  }
+
+  const openNewOs = () => {
+    setOsView("form")
+    setCurrentOsId(null)
+    setOsForm({
+      number: "",
+      client_id: "",
+      entry_date: new Date().toISOString().split("T")[0],
+      expected_delivery_date: "",
+      technician: "",
+      priority: "Normal",
+      origin: "Loja",
+      status: "Recebido",
+      customer_defect: "",
+      technical_diagnosis: "",
+      service_executed: "",
+      parts_value: 0,
+      labor_value: 0,
+      discount: 0,
+      shipping_value: 0,
+      total_value: 0,
+      payment_method: "",
+      installments: 1,
+      payment_status: "",
+      warranty: "",
+      warranty_term: "",
+      portal_token: crypto.randomUUID(),
+      entry_signature: "",
+      exit_signature: "",
+    })
+    setOsEquipment([])
+    setOsParts([])
+    setOsChecklists([])
+    setOsTimeline([])
+    setOsMedia([])
+    setOsActiveTab("info")
+  }
+
+  const openOs = (id: string) => {
+    setOsView("form")
+    setCurrentOsId(id)
+    loadOsData(id)
+  }
+
+  // Load service orders on mount
+  useEffect(() => {
+    if (activeTab === "os") {
+      loadServiceOrders()
+    }
+  }, [activeTab])
 
   if (!isAuthenticated) {
     return (
@@ -4541,7 +5970,10 @@ export default function OrcamentoPage() {
                   className={`w-full justify-start ${sidebarOpen ? "px-3" : "px-2"} ${
                     isDisabled ? "opacity-50 cursor-not-allowed" : ""
                   }`}
-                  onClick={() => !isDisabled && setActiveTab(item.id)}
+                  onClick={() => {
+                    if (isDisabled) return
+                    setActiveTab(item.id)
+                  }}
                   disabled={isDisabled}
                 >
                   <Icon className={`h-4 w-4 ${sidebarOpen ? "mr-3" : ""}`} />
@@ -4599,24 +6031,4 @@ export default function OrcamentoPage() {
       </div>
     </div>
   )
-
-  async function removerMovimentacao(id: string) {
-    try {
-      await deleteTransaction(id)
-      const novasMovimentacoes = movimentacoes.filter((mov) => mov.id !== id)
-      setMovimentacoes(novasMovimentacoes)
-      
-      toast({
-        title: "Movimentação removida",
-        description: "A movimentação foi removida com sucesso!",
-      })
-    } catch (error) {
-      console.error("Erro ao remover movimentação:", error)
-      toast({
-        title: "Erro ao remover",
-        description: "Não foi possível remover a movimentação. Tente novamente.",
-        variant: "destructive",
-      })
-    }
-  }
 }
